@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --bg: #0f1117;
+    --bg-panel: #151821;
+    --bg-card: #1a1d27;
+    --bg-inset: #12141c;
+
+    --border: #23262f;
+    --border-hover: #2e3240;
+
+    --text: #e2e4ea;
+    --text-2: #9196a8;
+    --text-3: #5c6177;
+
+    --blue: #4e7cff;
+    --blue-soft: rgba(78, 124, 255, 0.10);
+    --green: #3ddc84;
+    --green-soft: rgba(61, 220, 132, 0.10);
+    --red: #ff5c5c;
+    --red-soft: rgba(255, 92, 92, 0.10);
+    --yellow: #ffc233;
+    --yellow-soft: rgba(255, 194, 51, 0.10);
+    --violet: #9b8afb;
+
+    --radius: 10px;
+    --font: 'Inter', system-ui, sans-serif;
+    --mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}

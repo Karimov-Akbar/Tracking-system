@@ -1,0 +1,456 @@
+/**
+ * @file nmea_parser.c
+ * @brief Lightweight NMEA parser for $GPRMC and $GPGGA sentences.
+ *
+ * Handles checksum validation, coordinate conversion from
+ * NMEA DDMM.MMMM format to decimal degrees, and position
+ * stabilization via EMA (Exponential Moving Average) filtering.
+ */
+#include "nmea_parser.h"
+
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
+
+#include "nrf_log.h"
+
+/** @brief Maximum NMEA line length for internal buffer */
+#define NMEA_MAX_LINE_LEN   128
+
+/** @brief Maximum number of fields in a single NMEA sentence */
+#define NMEA_MAX_FIELDS     20
+
+/** @brief Minimum satellites required for position update */
+#define MIN_SATELLITES      3
+
+/** @brief Maximum HDOP for position to be considered usable */
+#define MAX_HDOP            10.0f
+
+/** @brief EMA smoothing factor (0.0-1.0, lower = smoother but slower) */
+#define EMA_ALPHA_DEFAULT   0.3f
+
+/** @brief Stronger smoothing for few satellites */
+#define EMA_ALPHA_LOW_SAT   0.05f
+
+/** @brief Threshold: if new position jumps more than this (degrees), reset filter */
+#define JUMP_THRESHOLD      0.005f   /* ~550 meters */
+
+/** @brief Internal GPS data storage */
+static nmea_gps_data_t m_gps_data;
+static bool             m_data_valid = false;
+
+/** @brief EMA filter state */
+static float m_ema_lat = 0.0f;
+static float m_ema_lon = 0.0f;
+static float m_ema_alt = 0.0f;
+static bool  m_ema_initialized = false;
+
+
+/**
+ * @brief Apply EMA filter to stabilize coordinates.
+ *
+ * Uses adaptive alpha: smoother when few satellites, more responsive
+ * when many. Resets filter on large position jumps (> JUMP_THRESHOLD).
+ */
+static void apply_ema_filter(float raw_lat, float raw_lon, float raw_alt)
+{
+    if (!m_ema_initialized)
+    {
+        /* First valid position — initialize filter */
+        m_ema_lat = raw_lat;
+        m_ema_lon = raw_lon;
+        m_ema_alt = raw_alt;
+        m_ema_initialized = true;
+    }
+    else
+    {
+        /* Detect large jumps — reset filter */
+        float dlat = raw_lat - m_ema_lat;
+        float dlon = raw_lon - m_ema_lon;
+        if (dlat < 0) dlat = -dlat;
+        if (dlon < 0) dlon = -dlon;
+
+        if (dlat > JUMP_THRESHOLD || dlon > JUMP_THRESHOLD)
+        {
+            m_ema_lat = raw_lat;
+            m_ema_lon = raw_lon;
+            m_ema_alt = raw_alt;
+            NRF_LOG_INFO("EMA: position jump detected, filter reset");
+        }
+        else
+        {
+            /* Adaptive alpha: more satellites = more trust in new data */
+            float alpha = (m_gps_data.satellites >= 6) ? EMA_ALPHA_DEFAULT : EMA_ALPHA_LOW_SAT;
+
+            m_ema_lat = alpha * raw_lat + (1.0f - alpha) * m_ema_lat;
+            m_ema_lon = alpha * raw_lon + (1.0f - alpha) * m_ema_lon;
+            m_ema_alt = alpha * raw_alt + (1.0f - alpha) * m_ema_alt;
+        }
+    }
+
+    /* Store filtered values */
+    m_gps_data.latitude  = m_ema_lat;
+    m_gps_data.longitude = m_ema_lon;
+    m_gps_data.altitude  = m_ema_alt;
+}
+
+/**
+ * @brief Validate NMEA checksum.
+ *
+ * Checksum is XOR of all characters between '$' and '*'.
+ *
+ * @param[in] p_sentence  Complete NMEA sentence (starting with '$').
+ *
+ * @retval true   Checksum valid or no checksum present.
+ * @retval false  Checksum mismatch.
+ */
+static bool nmea_validate_checksum(const char *p_sentence)
+{
+    if (p_sentence[0] != '$')
+    {
+        return false;
+    }
+
+    const char *p_star = strchr(p_sentence, '*');
+    if (p_star == NULL)
+    {
+        /* No checksum field — accept anyway (some modules omit it) */
+        return true;
+    }
+
+    uint8_t computed = 0;
+    for (const char *p = p_sentence + 1; p < p_star; p++)
+    {
+        computed ^= (uint8_t)(*p);
+    }
+
+    /* Parse expected checksum (2 hex digits after '*') */
+    uint8_t expected = (uint8_t)strtol(p_star + 1, NULL, 16);
+
+    if (computed != expected)
+    {
+        NRF_LOG_DEBUG("NMEA checksum fail: computed=0x%02X expected=0x%02X", computed, expected);
+        return false;
+    }
+
+    return true;
+}
+
+
+/**
+ * @brief Split NMEA sentence into fields by comma.
+ *
+ * Modifies the input string in-place (replaces commas with nulls).
+ *
+ * @param[in,out] p_sentence   Mutable sentence buffer.
+ * @param[out]    pp_fields    Array of pointers to field starts.
+ * @param[in]     max_fields   Maximum number of fields.
+ *
+ * @return Number of fields found.
+ */
+static int nmea_split_fields(char *p_sentence, char **pp_fields, int max_fields)
+{
+    int count = 0;
+
+    /* Strip checksum portion if present */
+    char *p_star = strchr(p_sentence, '*');
+    if (p_star != NULL)
+    {
+        *p_star = '\0';
+    }
+
+    /* Skip leading '$' */
+    char *p = p_sentence;
+    if (*p == '$')
+    {
+        p++;
+    }
+
+    while (p != NULL && count < max_fields)
+    {
+        pp_fields[count++] = p;
+        p = strchr(p, ',');
+        if (p != NULL)
+        {
+            *p = '\0';
+            p++;
+        }
+    }
+
+    return count;
+}
+
+
+/**
+ * @brief Convert NMEA coordinate (DDMM.MMMM or DDDMM.MMMM) to decimal degrees.
+ *
+ * @param[in] p_coord    Coordinate string (e.g. "5530.1234")
+ * @param[in] direction  'N'/'S' for latitude, 'E'/'W' for longitude
+ *
+ * @return Decimal degrees (negative for S/W).
+ */
+static float nmea_coord_to_decimal(const char *p_coord, char direction)
+{
+    if (p_coord == NULL || p_coord[0] == '\0')
+    {
+        return 0.0f;
+    }
+
+    float raw = (float)atof(p_coord);
+
+    /* Extract degrees: latitude = 2 digits, longitude = 3 digits */
+    int degrees;
+    float minutes;
+
+    if (direction == 'N' || direction == 'S')
+    {
+        degrees = (int)(raw / 100.0f);
+        minutes = raw - (degrees * 100.0f);
+    }
+    else
+    {
+        degrees = (int)(raw / 100.0f);
+        minutes = raw - (degrees * 100.0f);
+    }
+
+    float decimal = (float)degrees + (minutes / 60.0f);
+
+    if (direction == 'S' || direction == 'W')
+    {
+        decimal = -decimal;
+    }
+
+    return decimal;
+}
+
+
+/**
+ * @brief Parse time field (HHMMSS.SS) from NMEA sentence.
+ */
+static void nmea_parse_time(const char *p_time, nmea_gps_data_t *p_data)
+{
+    if (p_time == NULL || strlen(p_time) < 6)
+    {
+        return;
+    }
+
+    p_data->utc_hour   = (uint8_t)((p_time[0] - '0') * 10 + (p_time[1] - '0'));
+    p_data->utc_minute = (uint8_t)((p_time[2] - '0') * 10 + (p_time[3] - '0'));
+    p_data->utc_second = (uint8_t)((p_time[4] - '0') * 10 + (p_time[5] - '0'));
+}
+
+
+/**
+ * @brief Parse date field (DDMMYY) from GPRMC sentence.
+ */
+static void nmea_parse_date(const char *p_date, nmea_gps_data_t *p_data)
+{
+    if (p_date == NULL || strlen(p_date) < 6)
+    {
+        return;
+    }
+
+    p_data->day   = (uint8_t)((p_date[0] - '0') * 10 + (p_date[1] - '0'));
+    p_data->month = (uint8_t)((p_date[2] - '0') * 10 + (p_date[3] - '0'));
+    p_data->year  = (uint8_t)((p_date[4] - '0') * 10 + (p_date[5] - '0'));
+}
+
+
+/**
+ * @brief Parse $GPRMC (Recommended Minimum) sentence.
+ *
+ * Format: $GPRMC,time,status,lat,N/S,lon,E/W,speed,course,date,magvar,E/W*checksum
+ *         Fields: 0     1     2   3   4   5    6     7      8     9    10
+ */
+static bool nmea_parse_gprmc(char **pp_fields, int field_count)
+{
+    if (field_count < 10)
+    {
+        return false;
+    }
+
+    /* Field 1: UTC time */
+    nmea_parse_time(pp_fields[1], &m_gps_data);
+
+    /* Field 2: Status — A=valid, V=void */
+    m_gps_data.fix_valid = (pp_fields[2][0] == 'A');
+
+    if (m_gps_data.fix_valid)
+    {
+        /* Field 3+4: Latitude + N/S */
+        char lat_dir = (pp_fields[4][0] != '\0') ? pp_fields[4][0] : 'N';
+        float raw_lat = nmea_coord_to_decimal(pp_fields[3], lat_dir);
+
+        /* Field 5+6: Longitude + E/W */
+        char lon_dir = (pp_fields[6][0] != '\0') ? pp_fields[6][0] : 'E';
+        float raw_lon = nmea_coord_to_decimal(pp_fields[5], lon_dir);
+
+        /* Apply EMA stabilization filter */
+        apply_ema_filter(raw_lat, raw_lon, m_gps_data.altitude);
+
+        /* Field 7: Speed in knots */
+        if (pp_fields[7][0] != '\0')
+        {
+            m_gps_data.speed_knots = (float)atof(pp_fields[7]);
+        }
+    }
+
+    /* Field 9: Date (DDMMYY) */
+    nmea_parse_date(pp_fields[9], &m_gps_data);
+
+    m_data_valid = true;
+
+    NRF_LOG_DEBUG("GPRMC: fix=%d lat=%.4f lon=%.4f spd=%.1f",
+                  m_gps_data.fix_valid,
+                  m_gps_data.latitude,
+                  m_gps_data.longitude,
+                  m_gps_data.speed_knots);
+
+    return true;
+}
+
+
+/**
+ * @brief Parse $GPGGA (Fix Data) sentence.
+ *
+ * Format: $GPGGA,time,lat,N/S,lon,E/W,quality,numSat,hdop,alt,M,height,M,age,refID*checksum
+ *         Fields: 0    1   2   3   4    5       6      7    8  9  10   11  12  13
+ */
+static bool nmea_parse_gpgga(char **pp_fields, int field_count)
+{
+    if (field_count < 10)
+    {
+        return false;
+    }
+
+    /* Field 1: UTC time */
+    nmea_parse_time(pp_fields[1], &m_gps_data);
+
+    /* Field 6: Fix quality (0 = invalid) */
+    m_gps_data.fix_quality = (uint8_t)atoi(pp_fields[6]);
+
+    /* Field 7: Number of satellites */
+    if (pp_fields[7][0] != '\0')
+    {
+        m_gps_data.satellites = (uint8_t)atoi(pp_fields[7]);
+    }
+
+    /* Field 8: HDOP (Horizontal Dilution of Precision) */
+    if (field_count > 8 && pp_fields[8][0] != '\0')
+    {
+        m_gps_data.hdop = (float)atof(pp_fields[8]);
+    }
+
+    if (m_gps_data.fix_quality > 0)
+    {
+        /* GPGGA reports a valid fix */
+        m_gps_data.fix_valid = true;
+
+        /* Field 2+3: Latitude + direction */
+        char lat_dir = (pp_fields[3][0] != '\0') ? pp_fields[3][0] : 'N';
+        float raw_lat = nmea_coord_to_decimal(pp_fields[2], lat_dir);
+
+        /* Field 4+5: Longitude + direction */
+        char lon_dir = (pp_fields[5][0] != '\0') ? pp_fields[5][0] : 'E';
+        float raw_lon = nmea_coord_to_decimal(pp_fields[4], lon_dir);
+
+        /* Field 9: Altitude (meters above MSL) */
+        float raw_alt = m_gps_data.altitude;
+        if (field_count > 9 && pp_fields[9][0] != '\0')
+        {
+            raw_alt = (float)atof(pp_fields[9]);
+        }
+
+        /* Apply EMA stabilization filter */
+        apply_ema_filter(raw_lat, raw_lon, raw_alt);
+    }
+    else
+    {
+        /* No fix from GPGGA */
+        m_gps_data.fix_valid = false;
+    }
+
+    m_data_valid = true;
+
+    NRF_LOG_DEBUG("GPGGA: qual=%d sat=%d alt=%.1f fix=%d",
+                  m_gps_data.fix_quality,
+                  m_gps_data.satellites,
+                  m_gps_data.altitude,
+                  m_gps_data.fix_valid);
+
+    return true;
+}
+
+
+/* =========== Public API =========== */
+
+void nmea_parser_init(void)
+{
+    memset(&m_gps_data, 0, sizeof(m_gps_data));
+    m_data_valid = false;
+    m_ema_initialized = false;
+    m_ema_lat = 0.0f;
+    m_ema_lon = 0.0f;
+    m_ema_alt = 0.0f;
+    NRF_LOG_INFO("NMEA parser initialized (EMA filter enabled)");
+}
+
+
+bool nmea_parse_line(const char *p_sentence)
+{
+    if (p_sentence == NULL || p_sentence[0] != '$')
+    {
+        return false;
+    }
+
+    /* Validate checksum */
+    if (!nmea_validate_checksum(p_sentence))
+    {
+        return false;
+    }
+
+    /* Copy sentence to mutable buffer for tokenizing */
+    char buf[NMEA_MAX_LINE_LEN];
+    strncpy(buf, p_sentence, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+
+    /* Split into fields */
+    char *fields[NMEA_MAX_FIELDS];
+    int   count = nmea_split_fields(buf, fields, NMEA_MAX_FIELDS);
+
+    if (count < 2)
+    {
+        return false;
+    }
+
+    /* Determine sentence type from field 0 (e.g. "GPRMC" or "GPGGA") */
+    if (strcmp(fields[0], "GPRMC") == 0 || strcmp(fields[0], "GNRMC") == 0)
+    {
+        return nmea_parse_gprmc(fields, count);
+    }
+    else if (strcmp(fields[0], "GPGGA") == 0 || strcmp(fields[0], "GNGGA") == 0)
+    {
+        return nmea_parse_gpgga(fields, count);
+    }
+
+    /* Unknown sentence type — silently ignore */
+    return false;
+}
+
+
+bool nmea_get_last_data(nmea_gps_data_t *p_data)
+{
+    if (!m_data_valid || p_data == NULL)
+    {
+        return false;
+    }
+
+    memcpy(p_data, &m_gps_data, sizeof(nmea_gps_data_t));
+    return true;
+}
+
+
+bool nmea_has_fix(void)
+{
+    return m_data_valid && m_gps_data.fix_valid;
+}
