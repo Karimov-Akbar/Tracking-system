@@ -3,22 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker — Dashboard</title>
+    <meta name="description" content="BLE GPS Tracker — админ-панель мониторинга устройств">
+    <meta name="theme-color" content="#4e7cff">
+    <title>GPS Tracker — Админ-панель</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="assets/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-    <link rel="stylesheet" href="assets/styles/root.css" />
-    <link rel="stylesheet" href="assets/styles/main.css" />
-    <link rel="stylesheet" href="assets/styles/media.css" />
+    <link rel="stylesheet" href="assets/styles/root.css?v=8" />
+    <link rel="stylesheet" href="assets/styles/main.css?v=8" />
+    <link rel="stylesheet" href="assets/styles/media.css?v=8" />
 </head>
 <body>
+
+<div class="sos-banner" id="sosBanner">
+    <span class="material-symbols-outlined">emergency_share</span>
+    <strong>SOS ТРЕВОГА!</strong>
+    <span>Устройство: <b id="sosDeviceName">—</b></span>
+</div>
+
+<div class="alert-banner" id="alertBanner"></div>
+
 <div class="app">
     <button class="burger" id="burger" onclick="toggleMenu()">
-        <span></span>
-        <span></span>
-        <span></span>
+        <span></span><span></span><span></span>
     </button>
     <div class="panel-overlay" id="overlay" onclick="toggleMenu()"></div>
+
     <aside class="panel" id="panel">
         <div class="panel-head">
             <div class="brand">
@@ -27,88 +40,63 @@
                 </div>
                 <div>
                     <h1>GPS Tracker</h1>
-                    <p>nRF52840 · NEO-6M</p>
+                    <p>Панель мониторинга</p>
                 </div>
             </div>
-            <button id="connectBtn" class="btn-connect off" onclick="toggleConnection()">
-                <i class="fa-brands fa-bluetooth-b"></i>
-                <span id="connectText">Подключить</span>
+            <button class="btn-connect" onclick="connectDevice()">
+                <span class="material-symbols-outlined" style="font-size:18px">add_circle</span>
+                <span>Добавить устройство</span>
             </button>
         </div>
+
         <div class="panel-body">
-            <div class="card">
-                <div class="card-head">
-                    <span class="material-symbols-outlined">monitoring</span>
-                    <span>Статус</span>
-                </div>
-                <div class="grid-2x2">
-                    <div class="stat s-nofix" id="fixBox">
-                        <div class="lbl">Fix</div>
-                        <div class="val" id="fixVal">—</div>
-                    </div>
-                    <div class="stat s-sat">
-                        <div class="lbl">Спутники</div>
-                        <div class="val" id="satVal">—</div>
-                    </div>
-                    <div class="stat s-spd">
-                        <div class="lbl">Скорость</div>
-                        <div class="val"><span id="spdVal">—</span><span class="u"> км/ч</span></div>
-                    </div>
-                    <div class="stat s-alt">
-                        <div class="lbl">Высота</div>
-                        <div class="val"><span id="altVal">—</span><span class="u"> м</span></div>
-                    </div>
-                </div>
+            <div class="section-head">
+                <span class="material-symbols-outlined">devices</span>
+                <span>Устройства</span>
+                <div class="badge" id="deviceCount">0</div>
             </div>
-            <div class="card">
-                <div class="card-head">
-                    <span class="material-symbols-outlined">route</span>
-                    <span>Маршрут</span>
-                </div>
-                <div class="route">
-                    <div class="route-pt">
-                        <div class="r-title">Старт</div>
-                        <div class="r-sub" id="startPos">Ожидание fix…</div>
-                    </div>
-                    <div class="route-pt dest">
-                        <div class="r-title">Текущая</div>
-                        <div class="r-sub" id="curPos">Ожидание fix…</div>
-                    </div>
-                </div>
+            <div id="deviceList" class="device-list">
+                <div class="no-devices">Нет подключённых устройств</div>
             </div>
-            <div class="card">
-                <div class="card-head">
-                    <span class="material-symbols-outlined">explore</span>
-                    <span>Координаты</span>
-                </div>
-                <div class="coord-grid">
-                    <div class="coord-cell">
-                        <div class="lbl">Широта</div>
-                        <div class="val" id="latVal">—</div>
-                    </div>
-                    <div class="coord-cell">
-                        <div class="lbl">Долгота</div>
-                        <div class="val" id="lonVal">—</div>
-                    </div>
-                    <div class="coord-cell">
-                        <div class="lbl">Высота</div>
-                        <div class="val" id="altDetail">—</div>
-                    </div>
-                    <div class="coord-cell">
-                        <div class="lbl">Качество</div>
-                        <div class="val" id="qualVal">—</div>
-                    </div>
-                </div>
+
+            <div class="section-head">
+                <span class="material-symbols-outlined">shield</span>
+                <span>Геозоны</span>
             </div>
-            <div class="card">
-                <div class="card-head">
-                    <span class="material-symbols-outlined">terminal</span>
-                    <span>Лог</span>
-                </div>
-                <div class="log" id="logBox"></div>
+            <div class="safety-actions">
+                <button class="btn-action btn-zone" onclick="addGeofence()">
+                    <span class="material-symbols-outlined">add_location</span>
+                    <span>Добавить зону</span>
+                </button>
+                <button class="btn-action btn-zone-del" onclick="removeGeofences()">
+                    <span class="material-symbols-outlined">delete_sweep</span>
+                    <span>Очистить</span>
+                </button>
             </div>
+
+            <div class="section-head">
+                <span class="material-symbols-outlined">build</span>
+                <span>Инструменты</span>
+            </div>
+            <div class="tools-row">
+                <button class="btn-action" id="heatBtn" onclick="toggleHeatmap()">
+                    <span class="material-symbols-outlined">whatshot</span>
+                    <span>Heatmap</span>
+                </button>
+                <button class="btn-action" onclick="exportGPX()">
+                    <span class="material-symbols-outlined">download</span>
+                    <span>GPX</span>
+                </button>
+            </div>
+
+            <div class="section-head">
+                <span class="material-symbols-outlined">terminal</span>
+                <span>Лог</span>
+            </div>
+            <div class="log" id="logBox"></div>
         </div>
     </aside>
+
     <div class="map-wrap">
         <div class="map-tag">
             <div class="lbl"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px;margin-right:4px">my_location</span>Позиция</div>
@@ -117,14 +105,21 @@
         <div id="map">
             <div class="welcome" id="welcomeScreen">
                 <span class="material-symbols-outlined" style="font-size:56px;color:var(--text-3);opacity:.5;margin-bottom:20px">satellite_alt</span>
-                <h2>GPS Tracker</h2>
-                <p>Нажмите «Подключить» для соединения с устройством</p>
+                <h2>Панель мониторинга</h2>
+                <p>Нажмите «Добавить устройство» для подключения BLE трекера</p>
             </div>
         </div>
     </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="assets/scripts/app.js?v=3"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="assets/scripts/config.js?v=8"></script>
+<script src="assets/scripts/utils.js?v=8"></script>
+<script src="assets/scripts/track.js?v=8"></script>
+<script src="assets/scripts/sos.js?v=8"></script>
+<script src="assets/scripts/geofence.js?v=8"></script>
+<script src="assets/scripts/map.js?v=8"></script>
+<script src="assets/scripts/ble.js?v=8"></script>
 </body>
 </html>

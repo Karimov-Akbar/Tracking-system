@@ -50,10 +50,6 @@
         width: 340px;
         min-width: 340px;
     }
-
-    .stat .val {
-        font-size: 20px;
-    }
 }
 
 @media (max-width: 768px) {
@@ -116,6 +112,15 @@
         left: 62px;
         right: 14px;
     }
+
+    .device-list {
+        max-height: 200px;
+    }
+
+    .device-stats {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -133,16 +138,16 @@
         font-size: 12px;
     }
 
-    .stat .val {
-        font-size: 18px;
-    }
-
-    .coord-cell .val {
-        font-size: 11px;
-    }
-
     .log {
         max-height: 120px;
+        font-size: 10px;
+    }
+
+    .device-card {
+        padding: 8px 10px;
+    }
+
+    .device-stats {
         font-size: 10px;
     }
 }
