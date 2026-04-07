@@ -1,3 +1,4 @@
+# Build artifacts
 _build/
 *.hex
 *.bin
@@ -5,3 +6,22 @@ _build/
 *.out
 *.map
 *.in
+
+# Node.js (server)
+server/node_modules/
+server/chats.json
+server/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
+nrf_log_*
