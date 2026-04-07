@@ -41,6 +41,7 @@
 #define BLE_UUID_GPS_SERVICE        0x0001
 #define BLE_UUID_GPS_LOCATION_CHAR  0x0002
 #define BLE_UUID_GPS_STATUS_CHAR    0x0003
+#define BLE_UUID_GPS_SOS_CHAR       0x0004
 
 /** @brief GPS Location characteristic data (12 bytes) */
 typedef struct __attribute__((packed))
@@ -65,9 +66,11 @@ typedef struct
     uint16_t                service_handle;
     ble_gatts_char_handles_t location_handles;
     ble_gatts_char_handles_t status_handles;
+    ble_gatts_char_handles_t sos_handles;
     uint16_t                conn_handle;
     uint8_t                 uuid_type;
     bool                    location_notify_enabled;
+    bool                    sos_notify_enabled;
 } ble_gps_service_t;
 
 /**
@@ -109,5 +112,16 @@ uint32_t ble_gps_service_location_update(ble_gps_service_t *p_gps_service,
  */
 uint32_t ble_gps_service_status_update(ble_gps_service_t *p_gps_service,
                                         const nmea_gps_data_t *p_gps_data);
+
+/**
+ * @brief Send SOS alert via BLE notification.
+ *
+ * @param[in] p_gps_service  Pointer to GPS service instance.
+ * @param[in] sos_active     1 = SOS triggered, 0 = SOS cleared.
+ *
+ * @retval NRF_SUCCESS  Notification sent.
+ */
+uint32_t ble_gps_service_sos_notify(ble_gps_service_t *p_gps_service,
+                                    uint8_t sos_active);
 
 #endif /* BLE_GPS_SERVICE_H */

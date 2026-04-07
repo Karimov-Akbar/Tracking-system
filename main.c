@@ -99,8 +99,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
  */
 static void gps_line_handler(const char *p_line, uint16_t length)
 {
-    /* Log first 80 chars of every NMEA line for debugging */
-    NRF_LOG_INFO("NMEA: %s", p_line);
     nmea_parse_line(p_line);
 }
 
@@ -467,6 +465,17 @@ static void bsp_event_handler(bsp_event_t event)
                 APP_ERROR_CHECK(err_code);
             }
             break; // BSP_EVENT_DISCONNECT
+
+        case BSP_EVENT_KEY_0:
+        {
+            /* SOS button toggle */
+            static bool sos_active = false;
+            sos_active = !sos_active;
+            ble_gps_service_sos_notify(&m_gps_service, sos_active ? 1 : 0);
+            NRF_LOG_INFO("SOS %s", sos_active ? "ACTIVATED" : "CLEARED");
+        }
+        break;
+
         default:
             break;
     }
