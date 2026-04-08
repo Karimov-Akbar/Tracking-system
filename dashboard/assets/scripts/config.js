@@ -1,7 +1,8 @@
 const SVC     = '12340001-1234-5678-1234-56789abcdef0';
 const CHR_LOC = '12340002-1234-5678-1234-56789abcdef0';
 const CHR_STS = '12340003-1234-5678-1234-56789abcdef0';
-const CHR_SOS = '12340004-1234-5678-1234-56789abcdef0';
+const CHR_SOS  = '12340004-1234-5678-1234-56789abcdef0';
+const CHR_SCAN = '12340005-1234-5678-1234-56789abcdef0';
 
 const API_URL = 'https://tracker.muhandisd.uz:3001';
 
@@ -18,6 +19,7 @@ let map = null, mapOk = false;
 let geofences = [];
 let isInsideZone = {};
 let heatLayer = null, heatPts = [];
+let nearbyDevices = [];
 
 const MIN_MOVE_M = 10;
 const RSSI_TX_POWER = -59;
@@ -33,7 +35,7 @@ function createDeviceState(id, name, color) {
     return {
         id, name, color,
         dev: null, srv: null,
-        chrLoc: null, chrSts: null, chrSos: null,
+        chrLoc: null, chrSts: null, chrSos: null, chrScan: null,
         marker: null, track: null, label: null,
         pts: [], trackHistory: [],
         lastLat: 0, lastLon: 0,

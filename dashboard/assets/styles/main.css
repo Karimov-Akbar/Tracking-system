@@ -12,8 +12,8 @@ body {
 .app { display: flex; height: 100vh; }
 
 .panel {
-    width: 380px;
-    min-width: 380px;
+    width: 440px;
+    min-width: 440px;
     background: var(--bg-panel);
     border-right: 1px solid var(--border);
     display: flex;
@@ -137,7 +137,6 @@ body {
 }
 
 .badge {
-    margin-left: auto;
     background: var(--blue);
     color: #fff;
     font: 700 10px var(--font);
@@ -343,6 +342,104 @@ body {
 }
 .zone-label::before { display: none !important; }
 
+/* Nearby scanned devices */
+.section-toggle { cursor: pointer; user-select: none; }
+.toggle-arrow {
+    margin-left: auto;
+    font-size: 18px !important;
+    color: var(--text-3);
+    transition: transform .2s;
+}
+.nearby-wrap {
+    overflow: hidden;
+    transition: max-height .3s ease, opacity .2s;
+    max-height: 500px;
+    opacity: 1;
+}
+.nearby-wrap.collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+.btn-scan-refresh {
+    width: 100%;
+    margin: 4px 0 8px;
+    padding: 6px;
+    font: 500 11px/1 var(--sans);
+    color: var(--blue);
+    background: rgba(78,124,255,.06);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    transition: all .2s;
+}
+.btn-scan-refresh:hover { background: rgba(78,124,255,.12); border-color: var(--blue); }
+.btn-scan-refresh .material-symbols-outlined { font-size: 16px; }
+.nearby-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+.nearby-card {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+}
+.nearby-card:last-child { border-bottom: none; }
+.nearby-name {
+    font: 500 12px/1 var(--sans);
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.nearby-icon {
+    font-size: 16px;
+    color: var(--blue);
+    flex-shrink: 0;
+}
+.nearby-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 400 11px/1 var(--mono);
+    color: var(--text-3);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.nearby-signal { color: var(--blue); }
+.nearby-dist { color: var(--green); font-weight: 600; }
+.nearby-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-2);
+    transition: all .2s;
+}
+.nearby-btn:hover { border-color: var(--blue); background: rgba(78,124,255,.1); }
+.nearby-btn.tracked {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(34,197,94,.1);
+}
+.nearby-card.tracked {
+    background: rgba(34,197,94,.04);
+    border-left: 2px solid var(--green);
+}
+
 
 .log {
     max-height: 140px;
@@ -446,3 +543,38 @@ body {
 }
 .leaflet-control-attribution a { color: var(--text-2) !important; }
 
+/* GPS Loader */
+.gps-loader {
+    position: absolute;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10,12,18,.85);
+    backdrop-filter: blur(4px);
+    gap: 24px;
+}
+.gps-spinner {
+    width: 80px;
+    height: 80px;
+    border: 3px solid rgba(78,124,255,.15);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 1.2s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.gps-loader-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 500 14px/1 var(--sans);
+    color: var(--text-2);
+    animation: pulse 2s ease-in-out infinite;
+}
+.gps-loader-text .material-symbols-outlined {
+    font-size: 20px;
+    color: var(--blue);
+}
+@keyframes pulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
