@@ -7,6 +7,9 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3001;
 const TRACKER_URL = process.env.TRACKER_URL || 'https://tracker.muhandisd.uz';
 
+/* ── Timeout: auto-remove devices after 60s without updates ── */
+const DEVICE_TIMEOUT_MS = 60_000;
+
 const bot = new TelegramBot(BOT_TOKEN, { polling: { interval: 1000, params: { timeout: 10 } } });
 const app = express();
 app.use(cors());
@@ -17,8 +20,8 @@ bot.on('polling_error', (err) => {
 });
 
 let subscribedChats = new Set();
-let deviceLocations = {};
-let deviceSOS = {};
+let deviceLocations = {};   /* { name: { lat, lon, sat, spd, fix, timestamp } } */
+let deviceSOS = {};         /* { name: bool } */
 
 const fs = require('fs');
 const CHATS_FILE = __dirname + '/chats.json';
@@ -32,16 +35,47 @@ function saveChats() {
     fs.writeFileSync(CHATS_FILE, JSON.stringify([...subscribedChats]));
 }
 
+/* ── Cleanup stale devices every 15s ── */
+setInterval(() => {
+    const now = Date.now();
+    for (const name of Object.keys(deviceLocations)) {
+        if (now - deviceLocations[name].timestamp > DEVICE_TIMEOUT_MS) {
+            delete deviceLocations[name];
+            delete deviceSOS[name];
+            console.log(`Device timeout: ${name}`);
+        }
+    }
+}, 15_000);
+
+/* ── Human-readable time ago ── */
+function timeAgo(ms) {
+    const sec = Math.round(ms / 1000);
+    if (sec < 60) return `${sec}с`;
+    const min = Math.round(sec / 60);
+    if (min < 60) return `${min}м`;
+    const hr = Math.round(min / 60);
+    return `${hr}ч ${min % 60}м`;
+}
+
+/* ── Device type icons ── */
+const TYPE_ICONS = {
+    0: '📶', 1: '📱', 2: '💻', 3: '⌚',
+    4: '🎧', 5: '🔊', 6: '📺', 7: '🏷️', 8: '📡'
+};
+function typeIcon(t) { return TYPE_ICONS[t] || '📶'; }
+
+/* ── Bot commands ── */
+
 bot.onText(/\/start/, (msg) => {
     subscribedChats.add(msg.chat.id);
     saveChats();
     bot.sendMessage(msg.chat.id,
         `🛰️ *GPS Tracker — Система мониторинга*\n\n` +
         `Вы подписаны на уведомления!\n\n` +
-        `/status — все устройства\n` +
-        `/devices — список устройств\n` +
-        `/location — координаты всех\n` +
-        `/stop — отписаться\n\n` +
+        `📡 /status — статус устройств\n` +
+        `📋 /devices — список устройств\n` +
+        `📍 /location — координаты\n` +
+        `🔕 /stop — отписаться\n\n` +
         `🌐 Дашборд: ${TRACKER_URL}`,
         { parse_mode: 'Markdown' }
     );
@@ -56,18 +90,23 @@ bot.onText(/\/stop/, (msg) => {
 bot.onText(/\/status/, (msg) => {
     const names = Object.keys(deviceLocations);
     if (names.length === 0) {
-        bot.sendMessage(msg.chat.id, '❌ Нет активных устройств.');
+        bot.sendMessage(msg.chat.id, '❌ Нет активных устройств.\n\nПодключите трекер через дашборд.');
         return;
     }
     let text = `📡 *Статус устройств (${names.length})*\n\n`;
     names.forEach(name => {
         const d = deviceLocations[name];
-        const ago = Math.round((Date.now() - d.timestamp) / 1000);
+        const ago = Date.now() - d.timestamp;
         const sos = deviceSOS[name] ? '🆘' : '✅';
+        const fixStr = d.fix ? 'Fix ✓' : 'No Fix';
         text += `${sos} *${name}*\n`;
-        text += `📍 \`${d.lat.toFixed(6)}, ${d.lon.toFixed(6)}\`\n`;
-        text += `🛰️ ${d.sat || '—'} спутн. · 🚀 ${d.spd || 0} км/ч\n`;
-        text += `⏱️ ${ago}с назад\n\n`;
+        if (d.lat && d.lon && (d.lat !== 0 || d.lon !== 0)) {
+            text += `📍 \`${d.lat.toFixed(6)}, ${d.lon.toFixed(6)}\`\n`;
+        } else {
+            text += `📍 Координаты не получены\n`;
+        }
+        text += `🛰️ ${d.sat || 0} спутн. · ${fixStr}\n`;
+        text += `⏱️ ${timeAgo(ago)} назад\n\n`;
     });
     bot.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
 });
@@ -80,8 +119,10 @@ bot.onText(/\/devices/, (msg) => {
     }
     let text = `📋 *Устройства (${names.length}):*\n\n`;
     names.forEach((name, i) => {
+        const d = deviceLocations[name];
         const sos = deviceSOS[name] ? '🆘' : '🟢';
-        text += `${i+1}. ${sos} ${name}\n`;
+        const fixStr = d.fix ? 'Fix' : 'No Fix';
+        text += `${i+1}. ${sos} *${name}* — ${fixStr}, 🛰️${d.sat || 0}\n`;
     });
     bot.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
 });
@@ -94,17 +135,50 @@ bot.onText(/\/location/, (msg) => {
     }
     names.forEach(name => {
         const d = deviceLocations[name];
-        if (d.lat && d.lon) {
+        if (d.lat && d.lon && (d.lat !== 0 || d.lon !== 0)) {
             bot.sendMessage(msg.chat.id, `📍 *${name}:*`, { parse_mode: 'Markdown' }).catch(() => {});
             bot.sendLocation(msg.chat.id, d.lat, d.lon).catch(() => {});
+        } else {
+            bot.sendMessage(msg.chat.id, `📍 *${name}:* GPS фикс не получен`, { parse_mode: 'Markdown' }).catch(() => {});
         }
     });
 });
+
+
+
+/* ── API endpoints ── */
 
 app.post('/api/location', (req, res) => {
     const { deviceName, lat, lon, sat, spd, fix } = req.body;
     const name = deviceName || 'Unknown';
     deviceLocations[name] = { lat, lon, sat, spd, fix, timestamp: Date.now() };
+    res.json({ ok: true });
+});
+
+app.post('/api/disconnect', (req, res) => {
+    const { deviceName } = req.body;
+    const name = deviceName || 'Unknown';
+    delete deviceLocations[name];
+    delete deviceSOS[name];
+    console.log(`Device disconnected: ${name}`);
+
+    const message = `🔌 *${name}* отключён`;
+    for (const chatId of subscribedChats) {
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' }).catch(() => {});
+    }
+    res.json({ ok: true });
+});
+
+app.post('/api/track', (req, res) => {
+    const { deviceName, action } = req.body;
+    const name = deviceName || 'Unknown';
+    const emoji = action === 'add' ? '📌' : '❌';
+    const verb = action === 'add' ? 'добавлено' : 'удалено';
+
+    const message = `${emoji} Устройство *${name}* ${verb}`;
+    for (const chatId of subscribedChats) {
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' }).catch(() => {});
+    }
     res.json({ ok: true });
 });
 
