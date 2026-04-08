@@ -139,6 +139,7 @@ uint32_t ble_gps_service_init(ble_gps_service_t *p_gps_service)
     p_gps_service->conn_handle             = BLE_CONN_HANDLE_INVALID;
     p_gps_service->location_notify_enabled = false;
     p_gps_service->sos_notify_enabled      = false;
+    p_gps_service->scan_notify_enabled     = false;
 
     /* Add custom UUID base */
     ble_uuid128_t base_uuid = {BLE_UUID_GPS_SERVICE_BASE};
@@ -203,7 +204,49 @@ uint32_t ble_gps_service_init(ble_gps_service_t *p_gps_service)
         APP_ERROR_CHECK(err_code);
     }
 
-    NRF_LOG_INFO("BLE GPS service initialized (with SOS)");
+    /* Add Scan characteristic (Notify, Read, variable length) */
+    {
+        ble_gatts_char_md_t char_md;
+        ble_gatts_attr_md_t cccd_md;
+        ble_gatts_attr_t    attr_char_value;
+        ble_uuid_t          ble_uuid;
+        ble_gatts_attr_md_t attr_md;
+
+        memset(&cccd_md, 0, sizeof(cccd_md));
+        BLE_GAP_CONN_SEC_MODE_SET_OPEN(&cccd_md.read_perm);
+        BLE_GAP_CONN_SEC_MODE_SET_OPEN(&cccd_md.write_perm);
+        cccd_md.vloc = BLE_GATTS_VLOC_STACK;
+
+        memset(&char_md, 0, sizeof(char_md));
+        char_md.char_props.read   = 1;
+        char_md.char_props.notify = 1;
+        char_md.p_cccd_md         = &cccd_md;
+
+        ble_uuid.type = p_gps_service->uuid_type;
+        ble_uuid.uuid = BLE_UUID_GPS_SCAN_CHAR;
+
+        memset(&attr_md, 0, sizeof(attr_md));
+        BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.read_perm);
+        BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&attr_md.write_perm);
+        attr_md.vloc = BLE_GATTS_VLOC_STACK;
+        attr_md.vlen = 1;
+
+        uint8_t initial_scan = 0;
+        memset(&attr_char_value, 0, sizeof(attr_char_value));
+        attr_char_value.p_uuid    = &ble_uuid;
+        attr_char_value.p_attr_md = &attr_md;
+        attr_char_value.init_len  = 1;
+        attr_char_value.max_len   = 244;
+        attr_char_value.p_value   = &initial_scan;
+
+        err_code = sd_ble_gatts_characteristic_add(p_gps_service->service_handle,
+                                                   &char_md,
+                                                   &attr_char_value,
+                                                   &p_gps_service->scan_handles);
+        APP_ERROR_CHECK(err_code);
+    }
+
+    NRF_LOG_INFO("BLE GPS service initialized (with SOS + Scan)");
 
     return NRF_SUCCESS;
 }
@@ -246,6 +289,16 @@ void ble_gps_service_on_ble_evt(ble_evt_t const *p_ble_evt, void *p_context)
                     ble_srv_is_notification_enabled(p_evt_write->data);
                 NRF_LOG_INFO("SOS notifications %s",
                              p_gps_service->sos_notify_enabled ? "ON" : "OFF");
+            }
+
+            /* Check Scan CCCD */
+            if ((p_evt_write->handle == p_gps_service->scan_handles.cccd_handle) &&
+                (p_evt_write->len == 2))
+            {
+                p_gps_service->scan_notify_enabled =
+                    ble_srv_is_notification_enabled(p_evt_write->data);
+                NRF_LOG_INFO("Scan notifications %s",
+                             p_gps_service->scan_notify_enabled ? "ON" : "OFF");
             }
         }
         break;
@@ -372,6 +425,45 @@ uint32_t ble_gps_service_sos_notify(ble_gps_service_t *p_gps_service,
         hvx_params.offset = 0;
         hvx_params.p_len  = &hvx_len;
         hvx_params.p_data = &sos_active;
+
+        uint32_t err_code = sd_ble_gatts_hvx(p_gps_service->conn_handle, &hvx_params);
+        if (err_code == NRF_ERROR_RESOURCES)
+        {
+            return NRF_SUCCESS;
+        }
+        return err_code;
+    }
+
+    return NRF_SUCCESS;
+}
+
+
+uint32_t ble_gps_service_scan_update(ble_gps_service_t *p_gps_service,
+                                     const uint8_t *p_data, uint16_t length)
+{
+    /* Store scan data */
+    ble_gatts_value_t gatts_value;
+    memset(&gatts_value, 0, sizeof(gatts_value));
+    gatts_value.len     = length;
+    gatts_value.p_value = (uint8_t *)p_data;
+
+    sd_ble_gatts_value_set(BLE_CONN_HANDLE_INVALID,
+                           p_gps_service->scan_handles.value_handle,
+                           &gatts_value);
+
+    /* Send notification if connected */
+    if (p_gps_service->conn_handle != BLE_CONN_HANDLE_INVALID &&
+        p_gps_service->scan_notify_enabled)
+    {
+        ble_gatts_hvx_params_t hvx_params;
+        uint16_t               hvx_len = length;
+
+        memset(&hvx_params, 0, sizeof(hvx_params));
+        hvx_params.handle = p_gps_service->scan_handles.value_handle;
+        hvx_params.type   = BLE_GATT_HVX_NOTIFICATION;
+        hvx_params.offset = 0;
+        hvx_params.p_len  = &hvx_len;
+        hvx_params.p_data = p_data;
 
         uint32_t err_code = sd_ble_gatts_hvx(p_gps_service->conn_handle, &hvx_params);
         if (err_code == NRF_ERROR_RESOURCES)

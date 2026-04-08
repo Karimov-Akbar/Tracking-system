@@ -7,7 +7,7 @@ SDK_ROOT ?= /home/user/devel/esl-nsdk
 PROJ_DIR := .
 
 $(OUTPUT_DIRECTORY)/nrf52840_xxaa.out: \
-  LINKER_SCRIPT  := pca10059/s113/armgcc/estc_adverts_gcc_nrf52.ld
+  LINKER_SCRIPT  := pca10059/s140/armgcc/estc_adverts_gcc_nrf52.ld
 
 # Source files common to all targets
 SRC_FILES += \
@@ -98,6 +98,7 @@ SRC_FILES += \
   $(PROJ_DIR)/src/gps_uart.c \
   $(PROJ_DIR)/src/nmea_parser.c \
   $(PROJ_DIR)/src/ble_gps_service.c \
+  $(PROJ_DIR)/src/ble_scan.c \
   $(PROJ_DIR)/main.c
 
 # Include folders common to all targets
@@ -114,8 +115,8 @@ INC_FOLDERS += \
   $(SDK_ROOT)/external/segger_rtt \
   $(SDK_ROOT)/external/fprintf \
   $(SDK_ROOT)/components/toolchain/cmsis/include \
-  $(SDK_ROOT)/components/softdevice/s113/headers/nrf52 \
-  $(SDK_ROOT)/components/softdevice/s113/headers \
+  $(SDK_ROOT)/components/softdevice/s140/headers/nrf52 \
+  $(SDK_ROOT)/components/softdevice/s140/headers \
   $(SDK_ROOT)/components/softdevice/common \
   $(SDK_ROOT)/components/nfc/t4t_parser/tlv \
   $(SDK_ROOT)/components/nfc/t4t_parser/hl_detection_procedure \
@@ -332,10 +333,10 @@ $(OUTPUT_DIRECTORY)/nrf52840_xxaa.dfu: $(OUTPUT_DIRECTORY)/nrf52840_xxaa.hex
 	@echo Creating DFU package: $(OUTPUT_DIRECTORY)/nrf52840_xxaa.dfu
 	nrfutil pkg generate --hw-version 52 \
 						 --application-version 1 \
-						 --sd-req 0x0,0x102 \
-						 --sd-id 0x102 \
+						 --sd-req 0x0,0x0100 \
+						 --sd-id 0x0100 \
 						 --application $< \
-						 --softdevice $(SDK_ROOT)/components/softdevice/s113/hex/s113_nrf52_7.2.0_softdevice.hex $@
+						 --softdevice $(SDK_ROOT)/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex $@
 
 dfu: $(OUTPUT_DIRECTORY)/nrf52840_xxaa.dfu
 	@echo Performing DFU with generated package

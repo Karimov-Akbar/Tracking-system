@@ -34,6 +34,7 @@
 #include "gps_uart.h"
 #include "nmea_parser.h"
 #include "ble_gps_service.h"
+#include "ble_scan.h"
 
 
 #define DEVICE_NAME                     "GPS Tracker"                            /**< Name of device. Will be included in the advertising data. */
@@ -62,7 +63,10 @@ NRF_BLE_GATT_DEF(m_gatt);                                                       
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
 BLE_GPS_SERVICE_DEF(m_gps_service);                                             /**< GPS service instance. */
-APP_TIMER_DEF(m_gps_update_timer);                                              /**< GPS update timer instance. */
+APP_TIMER_DEF(m_gps_update_timer);
+APP_TIMER_DEF(m_scan_update_timer);
+
+#define SCAN_UPDATE_INTERVAL    APP_TIMER_TICKS(3000)
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
@@ -179,6 +183,25 @@ static void gps_update_timer_handler(void *p_context)
 }
 
 
+/**@brief Scan update timer handler.
+ *
+ * Periodically sends discovered BLE devices list over BLE.
+ */
+static void scan_update_timer_handler(void *p_context)
+{
+    ble_scan_cleanup();
+
+    uint8_t scan_buf[244];
+    uint16_t scan_len = ble_scan_pack(scan_buf, sizeof(scan_buf));
+
+    if (scan_len > 0)
+    {
+        ble_gps_service_scan_update(&m_gps_service, scan_buf, scan_len);
+        NRF_LOG_DEBUG("Scan update: %d devices", ble_scan_get_count());
+    }
+}
+
+
 /**@brief Function for the Timer initialization.
  *
  * @details Initializes the timer module. This creates and starts application timers.
@@ -193,6 +216,11 @@ static void timers_init(void)
     err_code = app_timer_create(&m_gps_update_timer,
                                 APP_TIMER_MODE_REPEATED,
                                 gps_update_timer_handler);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = app_timer_create(&m_scan_update_timer,
+                                APP_TIMER_MODE_REPEATED,
+                                scan_update_timer_handler);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -334,6 +362,9 @@ static void application_timers_start(void)
     // Start GPS update timer (1 second interval)
     err_code = app_timer_start(m_gps_update_timer, GPS_UPDATE_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
+
+    err_code = app_timer_start(m_scan_update_timer, SCAN_UPDATE_INTERVAL, NULL);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -414,8 +445,11 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             APP_ERROR_CHECK(err_code);
             break;
 
+        case BLE_GAP_EVT_ADV_REPORT:
+            ble_scan_on_ble_evt(p_ble_evt);
+            break;
+
         default:
-            // No implementation needed.
             break;
     }
 }
@@ -601,6 +635,10 @@ int main(void)
     application_timers_start();
 
     advertising_start();
+
+    /* Initialize BLE scanner (Observer role via S140) */
+    ble_scan_init();
+    ble_scan_start();
 
     // Enter main loop.
     for (;;)

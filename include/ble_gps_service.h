@@ -42,6 +42,7 @@
 #define BLE_UUID_GPS_LOCATION_CHAR  0x0002
 #define BLE_UUID_GPS_STATUS_CHAR    0x0003
 #define BLE_UUID_GPS_SOS_CHAR       0x0004
+#define BLE_UUID_GPS_SCAN_CHAR      0x0005
 
 /** @brief GPS Location characteristic data (12 bytes) */
 typedef struct __attribute__((packed))
@@ -67,10 +68,12 @@ typedef struct
     ble_gatts_char_handles_t location_handles;
     ble_gatts_char_handles_t status_handles;
     ble_gatts_char_handles_t sos_handles;
+    ble_gatts_char_handles_t scan_handles;
     uint16_t                conn_handle;
     uint8_t                 uuid_type;
     bool                    location_notify_enabled;
     bool                    sos_notify_enabled;
+    bool                    scan_notify_enabled;
 } ble_gps_service_t;
 
 /**
@@ -123,5 +126,17 @@ uint32_t ble_gps_service_status_update(ble_gps_service_t *p_gps_service,
  */
 uint32_t ble_gps_service_sos_notify(ble_gps_service_t *p_gps_service,
                                     uint8_t sos_active);
+
+/**
+ * @brief Send scanned BLE devices list via notification.
+ *
+ * @param[in] p_gps_service  Pointer to GPS service instance.
+ * @param[in] p_data         Packed scan data.
+ * @param[in] length         Length of data.
+ *
+ * @retval NRF_SUCCESS  Notification sent.
+ */
+uint32_t ble_gps_service_scan_update(ble_gps_service_t *p_gps_service,
+                                     const uint8_t *p_data, uint16_t length);
 
 #endif /* BLE_GPS_SERVICE_H */

@@ -5,6 +5,7 @@
 #include "gps_uart.h"
 
 #include <string.h>
+#include <stdio.h>
 
 #include "app_uart.h"
 #include "app_error.h"
@@ -56,6 +57,13 @@ static void uart_event_handler(app_uart_evt_t *p_event)
 }
 
 
+/* Forward declarations for GPS config functions */
+static void gps_send_str(const char *str);
+static void gps_send_nmea(const char *body);
+static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16_t plen);
+static void gps_send_config(void);
+
+
 uint32_t gps_uart_init(gps_uart_line_handler_t line_handler)
 {
     if (m_initialized)
@@ -91,9 +99,88 @@ uint32_t gps_uart_init(gps_uart_line_handler_t line_handler)
     {
         m_initialized = true;
         NRF_LOG_INFO("GPS UART initialized (RX=P0.15, TX=P0.17, 9600 baud)");
+
+        /* Configure NEO-6M for max accuracy and fast start */
+        gps_send_config();
     }
 
     return err_code;
+}
+
+
+/**
+ * @brief Send a string to GPS module via UART.
+ */
+static void gps_send_str(const char *str)
+{
+    while (*str) {
+        app_uart_put(*str++);
+    }
+}
+
+/**
+ * @brief Calculate NMEA checksum and send command with $...*XX\r\n
+ */
+static void gps_send_nmea(const char *body)
+{
+    uint8_t cksum = 0;
+    for (const char *p = body; *p; p++) cksum ^= *p;
+
+    char buf[80];
+    int len = snprintf(buf, sizeof(buf), "$%s*%02X\r\n", body, cksum);
+    (void)len;
+    gps_send_str(buf);
+}
+
+/**
+ * @brief Send UBX binary command to GPS.
+ */
+static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16_t plen)
+{
+    uint8_t ck_a = 0, ck_b = 0;
+
+    app_uart_put(0xB5);
+    app_uart_put(0x62);
+
+    uint8_t hdr[4] = { cls, id, (uint8_t)(plen & 0xFF), (uint8_t)(plen >> 8) };
+    for (int i = 0; i < 4; i++) { app_uart_put(hdr[i]); ck_a += hdr[i]; ck_b += ck_a; }
+    for (int i = 0; i < plen; i++) { app_uart_put(payload[i]); ck_a += payload[i]; ck_b += ck_a; }
+
+    app_uart_put(ck_a);
+    app_uart_put(ck_b);
+}
+
+/**
+ * @brief Configure NEO-6M for max accuracy and hot start.
+ */
+static void gps_send_config(void)
+{
+    /* 1. Disable unnecessary sentences to reduce load */
+    gps_send_nmea("PUBX,40,GLL,0,0,0,0");
+    gps_send_nmea("PUBX,40,VTG,0,0,0,0");
+    gps_send_nmea("PUBX,40,GSA,0,0,0,0");
+    gps_send_nmea("PUBX,40,GSV,0,0,0,0");
+
+    /* 2. Set Pedestrian navigation mode (3) for max accuracy
+     * UBX-CFG-NAV5: class=0x06, id=0x24, len=36 */
+    uint8_t nav5[36] = {0};
+    nav5[0] = 0x01;  /* mask: apply dynModel */
+    nav5[1] = 0x00;
+    nav5[2] = 0x03;  /* dynModel = Pedestrian */
+    nav5[3] = 0x03;  /* fixMode = auto 2D/3D */
+    gps_send_ubx(0x06, 0x24, nav5, sizeof(nav5));
+
+    /* 3. Enable SBAS for better accuracy
+     * UBX-CFG-SBAS: class=0x06, id=0x16, len=8 */
+    uint8_t sbas[8] = {0x01, 0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
+    gps_send_ubx(0x06, 0x16, sbas, sizeof(sbas));
+
+    /* 4. Hot start (uses saved ephemeris from BBR)
+     * UBX-CFG-RST: class=0x06, id=0x04, len=4 */
+    uint8_t rst[4] = {0x00, 0x00, 0x09, 0x00};  /* hotStart, controlled SW reset */
+    gps_send_ubx(0x06, 0x04, rst, sizeof(rst));
+
+    NRF_LOG_INFO("GPS: configured (pedestrian, SBAS, hot start)");
 }
 
 
