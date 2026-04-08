@@ -109,16 +109,20 @@ static uint8_t classify_device(uint16_t appearance, const char *name, uint16_t m
         default: break;
     }
 
-    /* По Manufacturer ID — определяем телефоны без имени */
+    /* По Manufacturer ID */
     if (mfr_id != 0xFFFF) {
         switch (mfr_id) {
-            case 0x004C: return DEV_TYPE_PHONE;    /* Apple */
-            case 0x00E0: return DEV_TYPE_PHONE;    /* Google */
+            case 0x004C: return DEV_TYPE_GENERIC;  /* Apple (could be anything) */
+            case 0x00E0: return DEV_TYPE_PHONE;    /* Google → likely Android phone */
             case 0x0075: return DEV_TYPE_PHONE;    /* Samsung */
+            case 0x027D: return DEV_TYPE_PHONE;    /* Huawei / Honor */
             case 0x0006: return DEV_TYPE_COMPUTER; /* Microsoft */
-            case 0x0059: return DEV_TYPE_WATCH;    /* Nordic Semi (dev kits) */
-            case 0x010F: return DEV_TYPE_WATCH;    /* Xiaomi */
+            case 0x0059: return DEV_TYPE_GENERIC;  /* Nordic Semi */
+            case 0x010F: return DEV_TYPE_PHONE;    /* Xiaomi */
             case 0x038F: return DEV_TYPE_HEADPHONE;/* Bose */
+            case 0x000A: return DEV_TYPE_HEADPHONE;/* Qualcomm (BT audio) */
+            case 0x0310: return DEV_TYPE_PHONE;    /* Realme */
+            case 0x0237: return DEV_TYPE_PHONE;    /* OPPO */
             default: break;
         }
     }
@@ -167,11 +171,15 @@ static void generate_name_from_mfr(char *name, uint8_t max_len, uint16_t mfr_id,
 {
     const char *prefix;
     switch (mfr_id) {
-        case 0x004C: prefix = "iPhone"; break;
+        case 0x004C: prefix = "Apple"; break;
         case 0x00E0: prefix = "Android"; break;
         case 0x0075: prefix = "Samsung"; break;
+        case 0x027D: prefix = "Huawei"; break;
         case 0x0006: prefix = "Windows"; break;
         case 0x010F: prefix = "Xiaomi"; break;
+        case 0x038F: prefix = "Bose"; break;
+        case 0x0310: prefix = "Realme"; break;
+        case 0x0237: prefix = "OPPO"; break;
         default:     prefix = "BLE"; break;
     }
     snprintf(name, max_len + 1, "%s_%02X%02X", prefix, addr[1], addr[0]);
