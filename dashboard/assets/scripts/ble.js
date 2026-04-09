@@ -19,7 +19,6 @@ function onLocFor(deviceId) {
         if (!loc) return;
         d.alt = loc.alt;
         updateDevicePosition(deviceId, loc.lat, loc.lon);
-        /* Hide GPS loader on first valid fix */
         if (loc.lat !== 0 || loc.lon !== 0) {
             const loader = document.getElementById('gpsLoader');
             if (loader) loader.style.display = 'none';
@@ -42,9 +41,8 @@ function onStsFor(deviceId) {
         const act = classifyMotion(d.spd);
         d.activity = act.label;
         d.activityIcon = act.icon;
-        /* Show GPS loader when No Fix */
         const loader = document.getElementById('gpsLoader');
-        if (loader && !d.isNearby) {
+        if (loader && !d.isNearby && currentMode !== 'indoor') {
             loader.style.display = d.fix ? 'none' : 'flex';
         }
         renderDeviceList();
@@ -93,6 +91,19 @@ function deviceIcon(type) {
     return `<span class="material-symbols-outlined nearby-icon">${icon}</span>`;
 }
 
+function brandIcon(name) {
+    const n = name.toLowerCase();
+    if (n.startsWith('iphone') || n.startsWith('ipad') || n.startsWith('device') ||
+        n.startsWith('airpods') || n.startsWith('iwatch') || n.startsWith('apple') ||
+        n.startsWith('homepod') || n.startsWith('appletv'))
+        return '<i class="fab fa-apple" style="font-size:16px;color:#aaa"></i>';
+    if (n.startsWith('samsung') || n.startsWith('android') || n.startsWith('huawei') ||
+        n.startsWith('xiaomi') || n.startsWith('oppo') || n.startsWith('realme') ||
+        n.startsWith('vivo') || n.startsWith('honor') || n.startsWith('pixel'))
+        return '<i class="fab fa-android" style="font-size:16px;color:#3ddc84"></i>';
+    return deviceIcon(0);
+}
+
 function onScanFor(deviceId) {
     return function(e) {
         const list = parseScan(e.target.value);
@@ -133,7 +144,7 @@ async function readStsFor(deviceId) {
         const v = await d.chrSts.readValue();
         onStsFor(deviceId)( v );
     } catch(e) {
-        if (d.dev && d.dev.gatt.connected) log(`${d.name}: read err`, 'err');
+        if (d.dev && d.dev.gatt.connected && currentMode !== 'indoor') log(`${d.name}: read err`, 'err');
     }
 }
 
@@ -163,7 +174,6 @@ async function connectDevice() {
         devices.set(deviceId, state);
 
         log(`Найдено: ${deviceName}`, 'ok');
-        /* Show GPS loader until fix */
         const loader = document.getElementById('gpsLoader');
         if (loader) loader.style.display = 'flex';
         btDev.addEventListener('gattserverdisconnected', () => onDeviceDisconnect(deviceId));
@@ -213,6 +223,8 @@ async function connectDevice() {
         updateDeviceCount();
         log(`${deviceName} подключён ✓`, 'ok');
 
+        if (devices.size === 1) showModeModal();
+
     } catch(e) {
         log('Ошибка: ' + e.message, 'err');
     }
@@ -238,16 +250,55 @@ function onDeviceDisconnect(deviceId) {
     const d = devices.get(deviceId);
     if (!d) return;
     if (d.interval) clearInterval(d.interval);
-    if (d.marker) d.marker.remove();
-    if (d.track) d.track.remove();
-    log(`${d.name} отключён`, 'err');
-    sendToServer('/api/disconnect', { deviceName: d.name });
-    devices.delete(deviceId);
-    if (selectedDeviceId === deviceId) {
-        selectedDeviceId = devices.size > 0 ? devices.keys().next().value : null;
+    log(`${d.name} отключён — переподключение…`, 'err');
+
+    if (!d._reconnectAttempts) d._reconnectAttempts = 0;
+    if (d._reconnectAttempts < 3 && d.dev && d.dev.gatt) {
+        d._reconnectAttempts++;
+        setTimeout(async () => {
+            try {
+                log(`Попытка ${d._reconnectAttempts}/3…`, 'inf');
+                const server = await d.dev.gatt.connect();
+                const svc = await server.getPrimaryService(SVC);
+
+                try {
+                    d.chrLoc = await svc.getCharacteristic(CHR_LOC);
+                    await d.chrLoc.startNotifications();
+                    d.chrLoc.addEventListener('characteristicvaluechanged', onLocFor(deviceId));
+                } catch(e) {}
+
+                try {
+                    d.chrSts = await svc.getCharacteristic(CHR_STS);
+                    await d.chrSts.startNotifications();
+                    d.chrSts.addEventListener('characteristicvaluechanged', onStsFor(deviceId));
+                } catch(e) {}
+
+                try {
+                    d.chrScan = await svc.getCharacteristic(CHR_SCAN);
+                    await d.chrScan.startNotifications();
+                    d.chrScan.addEventListener('characteristicvaluechanged', onScanFor(deviceId));
+                } catch(e) {}
+
+                d.interval = setInterval(() => readStsFor(deviceId), 2000);
+                d._reconnectAttempts = 0;
+                log(`${d.name} переподключён ✓`, 'ok');
+                renderDeviceList();
+            } catch(e) {
+                log(`Реконнект не удался: ${e.message}`, 'err');
+                onDeviceDisconnect(deviceId);
+            }
+        }, 2000);
+    } else {
+        if (d.marker) d.marker.remove();
+        if (d.track) d.track.remove();
+        sendToServer('/api/disconnect', { deviceName: d.name });
+        devices.delete(deviceId);
+        if (selectedDeviceId === deviceId) {
+            selectedDeviceId = devices.size > 0 ? devices.keys().next().value : null;
+        }
+        renderDeviceList();
+        updateDeviceCount();
     }
-    renderDeviceList();
-    updateDeviceCount();
 }
 
 function updateDeviceCount() {
@@ -266,15 +317,17 @@ function renderDeviceList() {
         card.onclick = () => focusDevice(id);
 
         if (d.isNearby) {
-            /* BLE tracked device — show type icon and RSSI */
             const nd = nearbyDevices.find(n => n.mac === d.nearbyMac);
             const rssi = nd ? nd.rssi : d.nearbyRssi;
             const dist = estimateDistance(rssi);
-            const typeIcon = d.nearbyType != null ? deviceIcon(d.nearbyType) : '<span class="material-symbols-outlined" style="font-size:16px">bluetooth</span>';
+            const icon = brandIcon(d.name);
             card.innerHTML = `
                 <div class="device-header">
                     <div class="device-color" style="background:${d.color}"></div>
-                    <div class="device-name">${typeIcon} ${d.name}</div>
+                    <div class="device-name" ondblclick="event.stopPropagation();renameDevice('${id}')" title="Двойной клик — переименовать">${icon} ${d.name}</div>
+                    <button class="device-rename" onclick="event.stopPropagation();renameDevice('${id}')" title="Переименовать">
+                        <span class="material-symbols-outlined" style="font-size:14px">edit</span>
+                    </button>
                     <button class="device-disconnect" onclick="event.stopPropagation();disconnectDevice('${id}')" title="Убрать">✕</button>
                 </div>
                 <div class="device-stats">
@@ -283,7 +336,6 @@ function renderDeviceList() {
                 </div>
             `;
         } else {
-            /* GPS Tracker — show compact GPS info */
             const statusDot = d.sosActive
                 ? '<span class="material-symbols-outlined" style="font-size:16px;color:#ef4444">warning</span>'
                 : d.fix
@@ -326,8 +378,14 @@ function renderNearbyDevices() {
     const el = document.getElementById('nearbyList');
     if (!el) return;
 
-    /* Filter out tracked devices */
-    const filtered = nearbyDevices.filter(nd => !devices.has('nearby_' + nd.mac));
+    const ALLOWED_TYPES = [1, 3, 4];
+    const EXCLUDED_NAMES = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_'];
+    const MIN_RSSI = -82;
+    const filtered = nearbyDevices
+        .filter(nd => !devices.has('nearby_' + nd.mac))
+        .filter(nd => ALLOWED_TYPES.includes(nd.type))
+        .filter(nd => nd.rssi > MIN_RSSI)
+        .filter(nd => !EXCLUDED_NAMES.some(ex => nd.name.toLowerCase().startsWith(ex)));
 
     if (filtered.length === 0) {
         el.innerHTML = '<div class="no-devices">Нет устройств рядом</div>';
@@ -336,7 +394,7 @@ function renderNearbyDevices() {
             const dist = estimateDistance(nd.rssi);
             const bars = nd.rssi > -50 ? '▓▓▓▓' : nd.rssi > -70 ? '▓▓▓░' : nd.rssi > -85 ? '▓▓░░' : '▓░░░';
             return `<div class="nearby-card">
-                <div class="nearby-name">${deviceIcon(nd.type)} ${nd.name}</div>
+                <div class="nearby-name">${brandIcon(nd.name)} ${nd.name}</div>
                 <div class="nearby-info">
                     <span class="nearby-signal">${bars} ${nd.rssi}dBm</span>
                     <span class="nearby-dist">~${dist}м</span>
@@ -347,16 +405,12 @@ function renderNearbyDevices() {
     }
     const countEl = document.getElementById('nearbyCount');
     if (countEl) countEl.textContent = filtered.length;
-
-    /* Auto-update tracked nearby devices positions */
     updateTrackedNearbyPositions();
 }
 
 function trackNearbyDevice(mac, name, rssi, type) {
     const deviceId = 'nearby_' + mac;
     if (devices.has(deviceId)) return;
-
-    /* Get dongle position as base */
     let baseLat = 0, baseLon = 0;
     devices.forEach(d => {
         if (d.lastLat && !d.id.startsWith('nearby_')) {
@@ -365,34 +419,43 @@ function trackNearbyDevice(mac, name, rssi, type) {
         }
     });
 
-    if (!baseLat) { log('Нет GPS — позиция трекера неизвестна', 'err'); return; }
+    if (!baseLat && currentMode !== 'indoor') {
+        log('Нет GPS — позиция трекера неизвестна', 'err');
+        return;
+    }
 
     const color = getNextColor();
     const state = createDeviceState(deviceId, name, color);
-    state.lastLat = baseLat;
-    state.lastLon = baseLon;
+    state.lastLat = baseLat || 0;
+    state.lastLon = baseLon || 0;
     state.isNearby = true;
     state.nearbyMac = mac;
     state.nearbyRssi = rssi;
     state.nearbyType = type != null ? type : 0;
+
+    const saved = getSavedName(mac);
+    if (saved) state.name = saved;
+
     devices.set(deviceId, state);
 
-    if (mapOk) addDeviceToMap(state);
-    updateDevicePosition(deviceId, baseLat, baseLon);
+    if (currentMode !== 'indoor' && baseLat) {
+        if (mapOk) addDeviceToMap(state);
+        updateDevicePosition(deviceId, baseLat, baseLon);
+    }
+
     renderDeviceList();
     renderNearbyDevices();
     updateDeviceCount();
-    log(`${name} добавлен на карту`, 'ok');
-    /* Notify Telegram (skip GPS Tracker) */
-    if (!name.startsWith('GPS')) {
-        sendToServer('/api/track', { deviceName: name, action: 'add' });
+    if (currentMode === 'indoor') renderRadar();
+    log(`${state.name} добавлен`, 'ok');
+    if (!state.name.startsWith('GPS')) {
+        sendToServer('/api/track', { deviceName: state.name, action: 'add' });
     }
 }
 
 function untrackNearbyDevice(mac) {
     const did = 'nearby_' + mac;
     const d = devices.get(did);
-    /* Notify Telegram before removing */
     if (d && !d.name.startsWith('GPS')) {
         sendToServer('/api/track', { deviceName: d.name, action: 'remove' });
     }
@@ -401,7 +464,6 @@ function untrackNearbyDevice(mac) {
 }
 
 function updateTrackedNearbyPositions() {
-    /* Get dongle position */
     let baseLat = 0, baseLon = 0;
     devices.forEach(d => {
         if (d.lastLat && !d.id.startsWith('nearby_')) {
@@ -416,7 +478,6 @@ function updateTrackedNearbyPositions() {
         const d = devices.get(did);
         if (!d) return;
         d.nearbyRssi = nd.rssi;
-        /* Position = dongle position (nearby device is close) */
         updateDevicePosition(did, baseLat, baseLon);
     });
 }
@@ -425,6 +486,125 @@ function estimateDistance(rssi) {
     const d = Math.pow(10, (RSSI_TX_POWER - rssi) / (10 * RSSI_N));
     return d < 1 ? '<1' : Math.round(d).toString();
 }
+
+function getSavedName(mac) {
+    try {
+        const map = JSON.parse(localStorage.getItem('deviceNames') || '{}');
+        return map[mac] || null;
+    } catch(e) { return null; }
+}
+
+function saveName(mac, name) {
+    try {
+        const map = JSON.parse(localStorage.getItem('deviceNames') || '{}');
+        map[mac] = name;
+        localStorage.setItem('deviceNames', JSON.stringify(map));
+    } catch(e) {}
+}
+
+function renameDevice(deviceId) {
+    const d = devices.get(deviceId);
+    if (!d) return;
+    const newName = prompt('Новое имя устройства:', d.name);
+    if (!newName || !newName.trim()) return;
+    const trimmed = newName.trim();
+    const oldName = d.name;
+    d.name = trimmed;
+
+    if (d.nearbyMac) saveName(d.nearbyMac, trimmed);
+
+    if (d.marker && mapOk) {
+        d.marker.remove();
+        addDeviceToMap(d);
+        if (d.lastLat) d.marker.setLatLng([d.lastLat, d.lastLon]);
+    }
+
+    renderDeviceList();
+    log(`${oldName} → ${trimmed}`, 'ok');
+
+    if (!trimmed.startsWith('GPS')) {
+        sendToServer('/api/track', { deviceName: trimmed, action: 'rename', oldName });
+    }
+}
+
+let currentMode = localStorage.getItem('trackerMode') || 'outdoor';
+
+function showModeModal() {
+    document.getElementById('modeModal').classList.add('show');
+}
+
+function setMode(mode) {
+    currentMode = mode;
+    localStorage.setItem('trackerMode', mode);
+    document.getElementById('modeModal').classList.remove('show');
+
+    const loader = document.getElementById('gpsLoader');
+    const radar = document.getElementById('radarView');
+    const welcome = document.getElementById('welcomeScreen');
+    const mapInfo = document.querySelector('.map-tag');
+
+    if (mode === 'indoor') {
+        if (loader) loader.style.display = 'none';
+        if (welcome) welcome.style.display = 'none';
+        if (mapInfo) mapInfo.style.display = 'none';
+        if (radar) radar.style.display = 'flex';
+        renderRadar();
+        log('Режим помещения включён', 'ok');
+    } else {
+        if (radar) radar.style.display = 'none';
+        if (mapInfo) mapInfo.style.display = '';
+        log('Режим улицы включён', 'ok');
+    }
+}
+
+function renderRadar() {
+    if (currentMode !== 'indoor') return;
+    const dotsEl = document.getElementById('radarDots');
+    if (!dotsEl) return;
+
+    const RING_R = 150;
+
+    const items = [];
+    devices.forEach((d, id) => {
+        if (d.isNearby) {
+            const nd = nearbyDevices.find(n => n.mac === d.nearbyMac);
+            const rssi = nd ? nd.rssi : d.nearbyRssi;
+            items.push({ name: d.name, rssi, color: d.color });
+        }
+    });
+    nearbyDevices.forEach(nd => {
+        if (!devices.has('nearby_' + nd.mac)) {
+            const ALLOWED = [1, 3, 4];
+            const EXCL = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_'];
+            if (ALLOWED.includes(nd.type) && nd.rssi > -82 &&
+                !EXCL.some(ex => nd.name.toLowerCase().startsWith(ex))) {
+                items.push({ name: nd.name, rssi: nd.rssi, color: '#4e7cff' });
+            }
+        }
+    });
+
+    dotsEl.innerHTML = '';
+    items.forEach((item, i) => {
+        const distM = Math.pow(10, (RSSI_TX_POWER - item.rssi) / (10 * RSSI_N));
+        const norm = Math.min(distM / 30, 1);
+        const r = 20 + norm * (RING_R - 20);
+
+        const angle = (i / Math.max(items.length, 1)) * Math.PI * 2 - Math.PI / 2;
+        const x = 160 + Math.cos(angle) * r;
+        const y = 160 + Math.sin(angle) * r;
+
+        const dot = document.createElement('div');
+        dot.className = 'radar-dot';
+        dot.style.cssText = `left:${x}px;top:${y}px;background:${item.color};box-shadow:0 0 8px ${item.color}80`;
+        dot.innerHTML = `<div class="radar-dot-label">${item.name}</div>`;
+        dot.title = `${item.name} · ${item.rssi}dBm · ~${distM < 1 ? '<1' : Math.round(distM)}м`;
+        dotsEl.appendChild(dot);
+    });
+}
+
+setInterval(() => {
+    if (currentMode === 'indoor') renderRadar();
+}, 2000);
 
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(() => console.log('SW registered')).catch(() => {});
