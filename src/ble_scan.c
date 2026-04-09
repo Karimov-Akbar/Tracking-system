@@ -73,26 +73,83 @@ static uint16_t extract_appearance(const uint8_t *data, uint16_t len)
     return 0;
 }
 
-/* Извлечь Manufacturer Specific Data company ID (AD type 0xFF) */
-static uint16_t extract_manufacturer_id(const uint8_t *data, uint16_t len)
+/* ── Manufacturer data extraction ── */
+
+/* Apple sub-type codes (byte after company ID 0x004C) */
+#define APPLE_NEARBY     0x10  /* Proximity / Nearby Info */
+#define APPLE_AIRPODS    0x07  /* AirPods / Beats */
+#define APPLE_FINDMY     0x12  /* Find My Network (AirTag etc) */
+#define APPLE_IBEACON    0x02  /* iBeacon */
+#define APPLE_HANDOFF    0x0C  /* Handoff */
+#define APPLE_AIRDROP    0x05  /* AirDrop */
+
+/* Apple Nearby Info device type nibble (upper 4 bits of byte after 0x10) */
+#define APPLE_DEV_IPHONE  1
+#define APPLE_DEV_IPAD    2
+#define APPLE_DEV_MAC     3
+#define APPLE_DEV_WATCH   4
+#define APPLE_DEV_HOMEPOD 5
+#define APPLE_DEV_TV      6
+#define APPLE_DEV_AUDIO   7
+
+/* Extracted manufacturer info */
+typedef struct {
+    uint16_t company_id;       /* BLE SIG company ID */
+    uint8_t  apple_sub_type;   /* Apple-specific sub-type (0x10, 0x07 etc) */
+    uint8_t  apple_dev_type;   /* For Nearby Info: device nibble */
+} mfr_info_t;
+
+static mfr_info_t extract_manufacturer_info(const uint8_t *data, uint16_t len)
 {
+    mfr_info_t info = { .company_id = 0xFFFF, .apple_sub_type = 0, .apple_dev_type = 0 };
     uint16_t pos = 0;
     while (pos < len) {
         uint8_t ad_len  = data[pos];
         if (ad_len == 0 || pos + ad_len >= len) break;
         uint8_t ad_type = data[pos + 1];
 
-        /* 0xFF = Manufacturer Specific Data, company ID in first 2 bytes */
         if (ad_type == 0xFF && ad_len >= 3) {
-            return (uint16_t)data[pos + 2] | ((uint16_t)data[pos + 3] << 8);
+            info.company_id = (uint16_t)data[pos + 2] | ((uint16_t)data[pos + 3] << 8);
+
+            /* Apple: parse sub-type */
+            if (info.company_id == 0x004C && ad_len >= 4) {
+                info.apple_sub_type = data[pos + 4];
+                /* Nearby Info: device type in upper nibble of next byte */
+                if (info.apple_sub_type == APPLE_NEARBY && ad_len >= 6) {
+                    info.apple_dev_type = (data[pos + 6] >> 4) & 0x0F;
+                }
+            }
+            return info;
         }
         pos += ad_len + 1;
     }
-    return 0xFFFF; /* Not found */
+    return info;
 }
 
-/* Определить тип устройства по BLE Appearance + имени + manufacturer */
-static uint8_t classify_device(uint16_t appearance, const char *name, uint16_t mfr_id)
+/* ── Device classification ── */
+
+static uint8_t classify_apple(const mfr_info_t *info)
+{
+    switch (info->apple_sub_type) {
+        case APPLE_AIRPODS:  return DEV_TYPE_HEADPHONE;
+        case APPLE_FINDMY:   return DEV_TYPE_PHONE;  /* iPhones relay Find My */
+        case APPLE_IBEACON:  return DEV_TYPE_TAG;
+        case APPLE_NEARBY:
+            switch (info->apple_dev_type) {
+                case APPLE_DEV_IPHONE: return DEV_TYPE_PHONE;
+                case APPLE_DEV_IPAD:   return DEV_TYPE_PHONE;
+                case APPLE_DEV_MAC:    return DEV_TYPE_COMPUTER;
+                case APPLE_DEV_WATCH:  return DEV_TYPE_WATCH;
+                case APPLE_DEV_HOMEPOD:return DEV_TYPE_SPEAKER;
+                case APPLE_DEV_TV:     return DEV_TYPE_TV;
+                case APPLE_DEV_AUDIO:  return DEV_TYPE_HEADPHONE;
+                default:               return DEV_TYPE_PHONE;
+            }
+        default: return DEV_TYPE_PHONE; /* most Apple BLE = iPhone */
+    }
+}
+
+static uint8_t classify_device(uint16_t appearance, const char *name, const mfr_info_t *mfr)
 {
     /* По Appearance */
     uint16_t cat = appearance >> 6;
@@ -110,19 +167,20 @@ static uint8_t classify_device(uint16_t appearance, const char *name, uint16_t m
     }
 
     /* По Manufacturer ID */
-    if (mfr_id != 0xFFFF) {
-        switch (mfr_id) {
-            case 0x004C: return DEV_TYPE_GENERIC;  /* Apple (could be anything) */
-            case 0x00E0: return DEV_TYPE_PHONE;    /* Google → likely Android phone */
+    if (mfr->company_id != 0xFFFF) {
+        switch (mfr->company_id) {
+            case 0x004C: return classify_apple(mfr);
+            case 0x00E0: return DEV_TYPE_PHONE;    /* Google */
             case 0x0075: return DEV_TYPE_PHONE;    /* Samsung */
             case 0x027D: return DEV_TYPE_PHONE;    /* Huawei / Honor */
             case 0x0006: return DEV_TYPE_COMPUTER; /* Microsoft */
-            case 0x0059: return DEV_TYPE_GENERIC;  /* Nordic Semi */
             case 0x010F: return DEV_TYPE_PHONE;    /* Xiaomi */
             case 0x038F: return DEV_TYPE_HEADPHONE;/* Bose */
-            case 0x000A: return DEV_TYPE_HEADPHONE;/* Qualcomm (BT audio) */
+            case 0x000A: return DEV_TYPE_HEADPHONE;/* Qualcomm */
             case 0x0310: return DEV_TYPE_PHONE;    /* Realme */
             case 0x0237: return DEV_TYPE_PHONE;    /* OPPO */
+            case 0x001D: return DEV_TYPE_PHONE;    /* Qualcomm (phones) */
+            case 0x0131: return DEV_TYPE_PHONE;    /* vivo */
             default: break;
         }
     }
@@ -131,12 +189,12 @@ static uint8_t classify_device(uint16_t appearance, const char *name, uint16_t m
     if (name[0] != '\0') {
         if (strstr(name, "Phone") || strstr(name, "phone") ||
             strstr(name, "Galaxy") || strstr(name, "iPhone") ||
-            strstr(name, "HUAWEI") || strstr(name, "Pixel") ||
-            strstr(name, "Redmi") || strstr(name, "POCO") ||
-            strstr(name, "Xiaomi") || strstr(name, "OPPO") ||
-            strstr(name, "Nokia") || strstr(name, "realme") ||
-            strstr(name, "vivo") || strstr(name, "OnePlus") ||
-            strstr(name, "GR-AC"))
+            strstr(name, "HUAWEI") || strstr(name, "Honor") ||
+            strstr(name, "Pixel") || strstr(name, "Redmi") ||
+            strstr(name, "POCO") || strstr(name, "Xiaomi") ||
+            strstr(name, "OPPO") || strstr(name, "Nokia") ||
+            strstr(name, "realme") || strstr(name, "vivo") ||
+            strstr(name, "OnePlus") || strstr(name, "GR-AC"))
             return DEV_TYPE_PHONE;
 
         if (strstr(name, "AirPod") || strstr(name, "Pods") ||
@@ -158,20 +216,39 @@ static uint8_t classify_device(uint16_t appearance, const char *name, uint16_t m
 
         if (strstr(name, "TV") || strstr(name, "Fire"))
             return DEV_TYPE_TV;
-
-        if (strstr(name, "WBB") || strstr(name, "AP"))
-            return DEV_TYPE_GENERIC;
     }
 
     return DEV_TYPE_UNKNOWN;
 }
 
-/* Сгенерировать имя на основе manufacturer ID */
-static void generate_name_from_mfr(char *name, uint8_t max_len, uint16_t mfr_id, const uint8_t *addr)
+/* ── Name generation ── */
+
+static const char* apple_name_prefix(const mfr_info_t *info)
+{
+    switch (info->apple_sub_type) {
+        case APPLE_AIRPODS: return "AirPods";
+        case APPLE_IBEACON: return "iBeacon";
+        case APPLE_FINDMY:  return "Device"; /* Could be any device relaying Find My */
+        case APPLE_NEARBY:
+            switch (info->apple_dev_type) {
+                case APPLE_DEV_IPHONE: return "iPhone";
+                case APPLE_DEV_IPAD:   return "iPad";
+                case APPLE_DEV_MAC:    return "Mac";
+                case APPLE_DEV_WATCH:  return "iWatch";
+                case APPLE_DEV_HOMEPOD:return "HomePod";
+                case APPLE_DEV_TV:     return "AppleTV";
+                case APPLE_DEV_AUDIO:  return "AirPods";
+                default:               return "Device";
+            }
+        default: return "Device";
+    }
+}
+
+static void generate_name_from_mfr(char *name, uint8_t max_len, const mfr_info_t *mfr, const uint8_t *addr)
 {
     const char *prefix;
-    switch (mfr_id) {
-        case 0x004C: prefix = "Apple"; break;
+    switch (mfr->company_id) {
+        case 0x004C: prefix = apple_name_prefix(mfr); break;
         case 0x00E0: prefix = "Android"; break;
         case 0x0075: prefix = "Samsung"; break;
         case 0x027D: prefix = "Huawei"; break;
@@ -180,6 +257,7 @@ static void generate_name_from_mfr(char *name, uint8_t max_len, uint16_t mfr_id,
         case 0x038F: prefix = "Bose"; break;
         case 0x0310: prefix = "Realme"; break;
         case 0x0237: prefix = "OPPO"; break;
+        case 0x0131: prefix = "vivo"; break;
         default:     prefix = "BLE"; break;
     }
     snprintf(name, max_len + 1, "%s_%02X%02X", prefix, addr[1], addr[0]);
@@ -256,7 +334,7 @@ void ble_scan_on_ble_evt(const void *p_evt)
     bool has_real_name = extract_name(rpt->data.p_data, rpt->data.len, name, SCAN_DEVICE_NAME_LEN);
     
     uint16_t appearance = extract_appearance(rpt->data.p_data, rpt->data.len);
-    uint16_t mfr_id = extract_manufacturer_id(rpt->data.p_data, rpt->data.len);
+    mfr_info_t mfr = extract_manufacturer_info(rpt->data.p_data, rpt->data.len);
 
     int idx = find_device(rpt->peer_addr.addr);
 
@@ -269,22 +347,22 @@ void ble_scan_on_ble_evt(const void *p_evt)
         /* Only update name if we got a REAL name */
         if (has_real_name) {
             strncpy(m_devices[idx].name, name, SCAN_DEVICE_NAME_LEN);
-            m_devices[idx].dev_type = classify_device(appearance, name, mfr_id);
-        } else if (appearance != 0 || mfr_id != 0xFFFF) {
-            m_devices[idx].dev_type = classify_device(appearance, m_devices[idx].name, mfr_id);
+            m_devices[idx].dev_type = classify_device(appearance, name, &mfr);
+        } else if (appearance != 0 || mfr.company_id != 0xFFFF) {
+            m_devices[idx].dev_type = classify_device(appearance, m_devices[idx].name, &mfr);
         }
     } else {
         /* New device */
         if (!has_real_name) {
-            if (mfr_id != 0xFFFF) {
-                generate_name_from_mfr(name, SCAN_DEVICE_NAME_LEN, mfr_id, rpt->peer_addr.addr);
+            if (mfr.company_id != 0xFFFF) {
+                generate_name_from_mfr(name, SCAN_DEVICE_NAME_LEN, &mfr, rpt->peer_addr.addr);
             } else {
                 snprintf(name, sizeof(name), "BLE_%02X%02X",
                          rpt->peer_addr.addr[1], rpt->peer_addr.addr[0]);
             }
         }
         
-        uint8_t dev_type = classify_device(appearance, name, mfr_id);
+        uint8_t dev_type = classify_device(appearance, name, &mfr);
 
         int slot = find_slot(rpt->rssi);
         if (slot >= 0) {
@@ -296,7 +374,7 @@ void ble_scan_on_ble_evt(const void *p_evt)
             d->dev_type   = dev_type;
             strncpy(d->name, name, SCAN_DEVICE_NAME_LEN);
             d->name[SCAN_DEVICE_NAME_LEN] = '\0';
-            NRF_LOG_INFO("Scan: %s (RSSI:%d type:%d mfr:0x%04X)", name, rpt->rssi, dev_type, mfr_id);
+            NRF_LOG_INFO("Scan: %s (RSSI:%d type:%d mfr:0x%04X)", name, rpt->rssi, dev_type, mfr.company_id);
         }
     }
 
