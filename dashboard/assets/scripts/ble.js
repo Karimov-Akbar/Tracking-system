@@ -419,7 +419,7 @@ function checkNearbyTimeouts() {
     devices.forEach((d, id) => {
         if (d.isNearby) {
             if (!d.lastSeen) d.lastSeen = now;
-            if (now - d.lastSeen > 30000) {
+            if (now - d.lastSeen > 120000) {
                 log(`Устройство ${d.name} потеряно`, 'err');
                 sendToServer('/api/track', { deviceName: d.name, action: 'lost' });
                 disconnectDevice(id);
@@ -492,14 +492,26 @@ function updateTrackedNearbyPositions() {
             baseLon = d.lastLon;
         }
     });
-    if (!baseLat) return;
+    if (!baseLat && currentMode !== 'indoor') return;
 
     nearbyDevices.forEach(nd => {
         const did = 'nearby_' + nd.mac;
         const d = devices.get(did);
         if (!d) return;
         d.nearbyRssi = nd.rssi;
-        updateDevicePosition(did, baseLat, baseLon);
+
+        if (currentMode === 'indoor') {
+            sendToServer('/api/location', {
+                deviceId: did,
+                deviceName: d.name,
+                lat: 0, lon: 0, sat: 0, spd: 0, fix: 1,
+                mode: 'indoor',
+                isNearby: true,
+                dist: estimateDistance(nd.rssi)
+            });
+        } else {
+            updateDevicePosition(did, baseLat, baseLon);
+        }
     });
 }
 
