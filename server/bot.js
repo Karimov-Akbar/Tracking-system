@@ -104,7 +104,7 @@ bot.onText(/\/status/, (msg) => {
 
         if (d.isNearby) {
             text += `📏 Расстояние: ~${d.dist}м от донгла\n`;
-        } else {
+        } else if (d.mode !== 'indoor') {
             const fixStr = d.fix ? 'Fix ✓' : 'No Fix';
             text += `🛰️ ${d.sat || 0} спутн. · ${fixStr}\n`;
         }
