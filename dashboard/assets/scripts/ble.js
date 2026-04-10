@@ -609,7 +609,7 @@ function renderRadar() {
         if (!devices.has('nearby_' + nd.mac)) {
             const ALLOWED = [1, 3, 4];
             const EXCL = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_', 'wbb'];
-            if (ALLOWED.includes(nd.type) && nd.rssi > -80 &&
+            if (ALLOWED.includes(nd.type) && nd.rssi > -100 &&
                 !EXCL.some(ex => nd.name.toLowerCase().startsWith(ex))) {
                 items.push({ name: nd.name, rssi: nd.rssi, color: '#4e7cff' });
             }
