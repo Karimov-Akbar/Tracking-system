@@ -58,10 +58,8 @@ static void uart_event_handler(app_uart_evt_t *p_event)
 
 
 /* Forward declarations for GPS config functions */
-/*
 static void gps_send_str(const char *str);
 static void gps_send_nmea(const char *body);
-*/
 static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16_t plen);
 static void gps_send_config(void);
 
@@ -110,16 +108,19 @@ uint32_t gps_uart_init(gps_uart_line_handler_t line_handler)
 }
 
 
-/*
+/**
+ * @brief Send a string to GPS module via UART.
+ */
 static void gps_send_str(const char *str)
 {
     while (*str) {
         app_uart_put(*str++);
     }
 }
-*/
 
-/*
+/**
+ * @brief Calculate NMEA checksum and send command with $...*XX\r\n
+ */
 static void gps_send_nmea(const char *body)
 {
     uint8_t cksum = 0;
@@ -130,7 +131,6 @@ static void gps_send_nmea(const char *body)
     (void)len;
     gps_send_str(buf);
 }
-*/
 
 /**
  * @brief Send UBX binary command to GPS.
@@ -155,7 +155,11 @@ static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16
  */
 static void gps_send_config(void)
 {
-    /* 1. Set Portable navigation mode (0) for better sensitivity near windows
+    /* 1. Disable unused NMEA sentences (GLL, VTG) to save UART bandwidth */
+    gps_send_nmea("PUBX,40,GLL,0,0,0,0");
+    gps_send_nmea("PUBX,40,VTG,0,0,0,0");
+
+    /* 2. Set Portable navigation mode (0) for better sensitivity near windows
      * UBX-CFG-NAV5: class=0x06, id=0x24, len=36 */
     uint8_t nav5[36] = {0};
     nav5[0] = 0x01;  /* mask: apply dynModel */
@@ -164,12 +168,20 @@ static void gps_send_config(void)
     nav5[3] = 0x03;  /* fixMode = auto 2D/3D */
     gps_send_ubx(0x06, 0x24, nav5, sizeof(nav5));
 
-    /* 2. Enable SBAS for better accuracy
+    /* 3. Enable SBAS for better accuracy
      * UBX-CFG-SBAS: class=0x06, id=0x16, len=8 */
     uint8_t sbas[8] = {0x01, 0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
     gps_send_ubx(0x06, 0x16, sbas, sizeof(sbas));
 
-    NRF_LOG_INFO("GPS: configured (portable, SBAS)");
+    /* 4. Save config to BBR + Flash so it persists across reboots
+     * UBX-CFG-CFG: saveMask=0xFFFF, deviceMask=0x17 */
+    uint8_t cfg_save[13] = {0};
+    cfg_save[4] = 0xFF; /* saveMask LSB */
+    cfg_save[5] = 0xFF; /* saveMask MSB */
+    cfg_save[12] = 0x17; /* deviceMask: BBR|Flash|SPI */
+    gps_send_ubx(0x06, 0x09, cfg_save, sizeof(cfg_save));
+
+    NRF_LOG_INFO("GPS: configured (portable, SBAS) & saved to flash");
 }
 
 
