@@ -249,56 +249,74 @@ function disconnectDevice(deviceId) {
 function onDeviceDisconnect(deviceId) {
     const d = devices.get(deviceId);
     if (!d) return;
+    if (d._reconnecting) return;
+    d._reconnecting = true;
     if (d.interval) clearInterval(d.interval);
+    
     log(`${d.name} отключён — переподключение…`, 'err');
+    attemptReconnect(deviceId);
+}
 
-    if (!d._reconnectAttempts) d._reconnectAttempts = 0;
-    if (d._reconnectAttempts < 3 && d.dev && d.dev.gatt) {
-        d._reconnectAttempts++;
-        setTimeout(async () => {
+async function attemptReconnect(deviceId) {
+    const d = devices.get(deviceId);
+    if (!d) return;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        log(`Попытка ${attempt}/3…`, 'inf');
+        await new Promise(r => setTimeout(r, 2000 * attempt));
+
+        try {
+            if (!d.dev || !d.dev.gatt) throw new Error('no gatt');
+            const server = await d.dev.gatt.connect();
+            const svc = await server.getPrimaryService(SVC);
+
             try {
-                log(`Попытка ${d._reconnectAttempts}/3…`, 'inf');
-                const server = await d.dev.gatt.connect();
-                const svc = await server.getPrimaryService(SVC);
+                d.chrLoc = await svc.getCharacteristic(CHR_LOC);
+                await d.chrLoc.startNotifications();
+                d.chrLoc.addEventListener('characteristicvaluechanged', onLocFor(deviceId));
+                log(`${d.name}: Location ✓`, 'ok');
+            } catch(e) {}
 
-                try {
-                    d.chrLoc = await svc.getCharacteristic(CHR_LOC);
-                    await d.chrLoc.startNotifications();
-                    d.chrLoc.addEventListener('characteristicvaluechanged', onLocFor(deviceId));
-                } catch(e) {}
+            try {
+                d.chrSts = await svc.getCharacteristic(CHR_STS);
+                /* CHR_STS is a READ characteristic, no notifications */
+                log(`${d.name}: Status ✓`, 'ok');
+            } catch(e) {}
 
-                try {
-                    d.chrSts = await svc.getCharacteristic(CHR_STS);
-                    await d.chrSts.startNotifications();
-                    d.chrSts.addEventListener('characteristicvaluechanged', onStsFor(deviceId));
-                } catch(e) {}
+            try {
+                d.chrScan = await svc.getCharacteristic(CHR_SCAN);
+                await d.chrScan.startNotifications();
+                d.chrScan.addEventListener('characteristicvaluechanged', onScanFor(deviceId));
+                log(`${d.name}: Scan ✓`, 'ok');
+            } catch(e) {}
 
-                try {
-                    d.chrScan = await svc.getCharacteristic(CHR_SCAN);
-                    await d.chrScan.startNotifications();
-                    d.chrScan.addEventListener('characteristicvaluechanged', onScanFor(deviceId));
-                } catch(e) {}
+            try {
+                const chrSos = await svc.getCharacteristic(CHR_SOS);
+                log(`${d.name}: SOS ✓`, 'ok');
+            } catch(e) {}
 
-                d.interval = setInterval(() => readStsFor(deviceId), 2000);
-                d._reconnectAttempts = 0;
-                log(`${d.name} переподключён ✓`, 'ok');
-                renderDeviceList();
-            } catch(e) {
-                log(`Реконнект не удался: ${e.message}`, 'err');
-                onDeviceDisconnect(deviceId);
-            }
-        }, 2000);
-    } else {
-        if (d.marker) d.marker.remove();
-        if (d.track) d.track.remove();
-        sendToServer('/api/disconnect', { deviceName: d.name });
-        devices.delete(deviceId);
-        if (selectedDeviceId === deviceId) {
-            selectedDeviceId = devices.size > 0 ? devices.keys().next().value : null;
+            d.interval = setInterval(() => readStsFor(deviceId), 2000);
+            d._reconnecting = false;
+            log(`${d.name} переподключён ✓`, 'ok');
+            renderDeviceList();
+            return; /* success */
+        } catch(e) {
+            log(`Реконнект ${attempt}/3 не удался: ${e.message}`, 'err');
         }
-        renderDeviceList();
-        updateDeviceCount();
     }
+
+    /* All attempts failed — remove device */
+    d._reconnecting = false;
+    if (d.marker) d.marker.remove();
+    if (d.track) d.track.remove();
+    sendToServer('/api/disconnect', { deviceName: d.name });
+    devices.delete(deviceId);
+    if (selectedDeviceId === deviceId) {
+        selectedDeviceId = devices.size > 0 ? devices.keys().next().value : null;
+    }
+    renderDeviceList();
+    updateDeviceCount();
+    log(`${d.name}: все попытки исчерпаны`, 'err');
 }
 
 function updateDeviceCount() {
@@ -379,8 +397,8 @@ function renderNearbyDevices() {
     if (!el) return;
 
     const ALLOWED_TYPES = [1, 3, 4];
-    const EXCLUDED_NAMES = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_'];
-    const MIN_RSSI = -82;
+    const EXCLUDED_NAMES = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_', 'wbb'];
+    const MIN_RSSI = -80;
     const filtered = nearbyDevices
         .filter(nd => !devices.has('nearby_' + nd.mac))
         .filter(nd => ALLOWED_TYPES.includes(nd.type))
@@ -575,8 +593,8 @@ function renderRadar() {
     nearbyDevices.forEach(nd => {
         if (!devices.has('nearby_' + nd.mac)) {
             const ALLOWED = [1, 3, 4];
-            const EXCL = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_'];
-            if (ALLOWED.includes(nd.type) && nd.rssi > -82 &&
+            const EXCL = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_', 'wbb'];
+            if (ALLOWED.includes(nd.type) && nd.rssi > -80 &&
                 !EXCL.some(ex => nd.name.toLowerCase().startsWith(ex))) {
                 items.push({ name: nd.name, rssi: nd.rssi, color: '#4e7cff' });
             }

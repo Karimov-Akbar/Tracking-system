@@ -310,6 +310,28 @@ static bool nmea_parse_gprmc(char **pp_fields, int field_count)
 }
 
 
+static bool nmea_parse_gsv(char **pp_fields, int field_count)
+{
+    if (field_count < 4) return false;
+
+    if (pp_fields[3][0] != '\0')
+    {
+        uint8_t sv_count = (uint8_t)atoi(pp_fields[3]);
+        /* For UX, we show satellites in view if it's higher than used */
+        if (!m_gps_data.fix_valid || sv_count > m_gps_data.satellites)
+        {
+             m_gps_data.satellites = sv_count;
+        }
+    }
+    
+    /* We still want to log it to ensure it's working */
+    if (pp_fields[2][0] == '1') {
+        NRF_LOG_DEBUG("GSV: %d satellites in view", m_gps_data.satellites);
+    }
+    
+    return true;
+}
+
 /**
  * @brief Parse $GPGGA (Fix Data) sentence.
  *
@@ -329,10 +351,21 @@ static bool nmea_parse_gpgga(char **pp_fields, int field_count)
     /* Field 6: Fix quality (0 = invalid) */
     m_gps_data.fix_quality = (uint8_t)atoi(pp_fields[6]);
 
-    /* Field 7: Number of satellites */
+    /* Field 7: Number of satellites (used in fix) */
     if (pp_fields[7][0] != '\0')
     {
-        m_gps_data.satellites = (uint8_t)atoi(pp_fields[7]);
+        uint8_t used_sats = (uint8_t)atoi(pp_fields[7]);
+        /* Don't overwrite GSV "in view" count with 0 from GGA if no fix */
+        if (m_gps_data.fix_quality > 0)
+        {
+            if (used_sats > m_gps_data.satellites || m_gps_data.satellites == 0) {
+                m_gps_data.satellites = used_sats;
+            }
+        }
+        else if (used_sats > 0 && used_sats > m_gps_data.satellites)
+        {
+            m_gps_data.satellites = used_sats;
+        }
     }
 
     /* Field 8: HDOP (Horizontal Dilution of Precision) */
@@ -431,6 +464,10 @@ bool nmea_parse_line(const char *p_sentence)
     else if (strcmp(fields[0], "GPGGA") == 0 || strcmp(fields[0], "GNGGA") == 0)
     {
         return nmea_parse_gpgga(fields, count);
+    }
+    else if (strcmp(fields[0], "GPGSV") == 0 || strcmp(fields[0], "GLGSV") == 0 || strcmp(fields[0], "GNGSV") == 0)
+    {
+        return nmea_parse_gsv(fields, count);
     }
 
     /* Unknown sentence type — silently ignore */

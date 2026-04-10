@@ -58,8 +58,10 @@ static void uart_event_handler(app_uart_evt_t *p_event)
 
 
 /* Forward declarations for GPS config functions */
+/*
 static void gps_send_str(const char *str);
 static void gps_send_nmea(const char *body);
+*/
 static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16_t plen);
 static void gps_send_config(void);
 
@@ -108,19 +110,16 @@ uint32_t gps_uart_init(gps_uart_line_handler_t line_handler)
 }
 
 
-/**
- * @brief Send a string to GPS module via UART.
- */
+/*
 static void gps_send_str(const char *str)
 {
     while (*str) {
         app_uart_put(*str++);
     }
 }
+*/
 
-/**
- * @brief Calculate NMEA checksum and send command with $...*XX\r\n
- */
+/*
 static void gps_send_nmea(const char *body)
 {
     uint8_t cksum = 0;
@@ -131,6 +130,7 @@ static void gps_send_nmea(const char *body)
     (void)len;
     gps_send_str(buf);
 }
+*/
 
 /**
  * @brief Send UBX binary command to GPS.
@@ -155,32 +155,21 @@ static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16
  */
 static void gps_send_config(void)
 {
-    /* 1. Disable unnecessary sentences to reduce load */
-    gps_send_nmea("PUBX,40,GLL,0,0,0,0");
-    gps_send_nmea("PUBX,40,VTG,0,0,0,0");
-    gps_send_nmea("PUBX,40,GSA,0,0,0,0");
-    gps_send_nmea("PUBX,40,GSV,0,0,0,0");
-
-    /* 2. Set Pedestrian navigation mode (3) for max accuracy
+    /* 1. Set Portable navigation mode (0) for better sensitivity near windows
      * UBX-CFG-NAV5: class=0x06, id=0x24, len=36 */
     uint8_t nav5[36] = {0};
     nav5[0] = 0x01;  /* mask: apply dynModel */
     nav5[1] = 0x00;
-    nav5[2] = 0x03;  /* dynModel = Pedestrian */
+    nav5[2] = 0x00;  /* dynModel = Portable */
     nav5[3] = 0x03;  /* fixMode = auto 2D/3D */
     gps_send_ubx(0x06, 0x24, nav5, sizeof(nav5));
 
-    /* 3. Enable SBAS for better accuracy
+    /* 2. Enable SBAS for better accuracy
      * UBX-CFG-SBAS: class=0x06, id=0x16, len=8 */
     uint8_t sbas[8] = {0x01, 0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
     gps_send_ubx(0x06, 0x16, sbas, sizeof(sbas));
 
-    /* 4. Hot start (uses saved ephemeris from BBR)
-     * UBX-CFG-RST: class=0x06, id=0x04, len=4 */
-    uint8_t rst[4] = {0x00, 0x00, 0x09, 0x00};  /* hotStart, controlled SW reset */
-    gps_send_ubx(0x06, 0x04, rst, sizeof(rst));
-
-    NRF_LOG_INFO("GPS: configured (pedestrian, SBAS, hot start)");
+    NRF_LOG_INFO("GPS: configured (portable, SBAS)");
 }
 
 
