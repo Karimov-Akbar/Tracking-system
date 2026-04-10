@@ -519,7 +519,12 @@ function updateTrackedNearbyPositions() {
                 dist: estimateDistance(nd.rssi)
             });
             if (baseLat && typeof checkGeofences === 'function') {
-                checkGeofences(did, baseLat, baseLon);
+                const distNum = parseFloat(estimateDistance(nd.rssi)) || 1;
+                const angle = d._angle || (Math.random() * Math.PI * 2);
+                d._angle = angle + 0.1;
+                const dLat = (distNum / 111320) * Math.cos(angle);
+                const dLon = (distNum / (40075 * Math.cos(baseLat * Math.PI / 180))) * Math.sin(angle);
+                checkGeofences(did, baseLat + dLat, baseLon + dLon);
             }
         } else {
             updateDevicePosition(did, baseLat, baseLon);
