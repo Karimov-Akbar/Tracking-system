@@ -500,6 +500,11 @@ function updateTrackedNearbyPositions() {
         }
     });
     if (!baseLat && currentMode !== 'indoor') return;
+    if (!baseLat && typeof map !== 'undefined' && typeof map.getCenter === 'function') {
+        const c = map.getCenter();
+        baseLat = c.lat;
+        baseLon = c.lng;
+    }
 
     nearbyDevices.forEach(nd => {
         const did = 'nearby_' + nd.mac;
