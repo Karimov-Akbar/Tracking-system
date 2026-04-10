@@ -1,10 +1,10 @@
-const SVC     = '12340001-1234-5678-1234-56789abcdef0';
+const SVC = '12340001-1234-5678-1234-56789abcdef0';
 const CHR_LOC = '12340002-1234-5678-1234-56789abcdef0';
 const CHR_STS = '12340003-1234-5678-1234-56789abcdef0';
-const CHR_SOS  = '12340004-1234-5678-1234-56789abcdef0';
+const CHR_SOS = '12340004-1234-5678-1234-56789abcdef0';
 const CHR_SCAN = '12340005-1234-5678-1234-56789abcdef0';
 
-const API_URL = 'https://tracker.muhandisd.uz:3001';
+const API_URL = ''; // Nginx proxies /api and everything locally instead of port 3001 directly.
 
 const DEVICE_COLORS = [
     '#4e7cff', '#22c55e', '#f59e0b', '#ef4444', '#a78bfa',
