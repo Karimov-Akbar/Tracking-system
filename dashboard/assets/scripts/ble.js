@@ -511,11 +511,16 @@ function updateTrackedNearbyPositions() {
             sendToServer('/api/location', {
                 deviceId: did,
                 deviceName: d.name,
-                lat: 0, lon: 0, sat: 0, spd: 0, fix: 1,
+                lat: baseLat || 0,
+                lon: baseLon || 0,
+                sat: 0, spd: 0, fix: 1,
                 mode: 'indoor',
                 isNearby: true,
                 dist: estimateDistance(nd.rssi)
             });
+            if (baseLat && typeof checkGeofences === 'function') {
+                checkGeofences(did, baseLat, baseLon);
+            }
         } else {
             updateDevicePosition(did, baseLat, baseLon);
         }
