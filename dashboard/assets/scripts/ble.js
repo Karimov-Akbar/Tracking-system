@@ -103,6 +103,13 @@ function onScanFor(deviceId) {
     return function (e) {
         const list = parseScan(e.target.value);
         nearbyDevices = list;
+
+        const now = Date.now();
+        list.forEach(nd => {
+            const d = devices.get('nearby_' + nd.mac);
+            if (d) d.lastSeen = now;
+        });
+
         renderNearbyDevices();
     };
 }
