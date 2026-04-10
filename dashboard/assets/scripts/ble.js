@@ -500,7 +500,7 @@ function updateTrackedNearbyPositions() {
         }
     });
     if (!baseLat && currentMode !== 'indoor') return;
-    if (!baseLat && typeof map !== 'undefined' && typeof map.getCenter === 'function') {
+    if (!baseLat && typeof mapOk !== 'undefined' && mapOk) {
         const c = map.getCenter();
         baseLat = c.lat;
         baseLon = c.lng;
