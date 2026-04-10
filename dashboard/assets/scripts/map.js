@@ -10,8 +10,10 @@ function ensureMap(lat, lon) {
     }).addTo(map);
 
     if (typeof L.heatLayer === 'function') {
-        heatLayer = L.heatLayer([], { radius: 25, blur: 15, maxZoom: 17,
-            gradient: {0.2: '#2563eb', 0.4: '#7c3aed', 0.6: '#f59e0b', 0.8: '#ef4444', 1: '#fff'} });
+        heatLayer = L.heatLayer([], {
+            radius: 25, blur: 15, maxZoom: 17,
+            gradient: { 0.2: '#2563eb', 0.4: '#7c3aed', 0.6: '#f59e0b', 0.8: '#ef4444', 1: '#fff' }
+        });
     }
 
     loadGeofences();
@@ -25,7 +27,7 @@ function addDeviceToMap(device) {
             <div style="width:18px;height:18px;background:${device.color};border:3px solid #fff;border-radius:50%;box-shadow:0 0 16px ${device.color}80"></div>
             <div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(0,0,0,.7);color:#fff;font:600 10px 'Inter',sans-serif;padding:2px 6px;border-radius:4px;pointer-events:none">${device.name}</div>
         </div>`,
-        iconSize: [18,18], iconAnchor: [9,9]
+        iconSize: [18, 18], iconAnchor: [9, 9]
     });
     device.marker = L.marker([device.lastLat || 0, device.lastLon || 0], { icon }).addTo(map);
     device.track = L.polyline([], { color: device.color, weight: 3, opacity: .7 }).addTo(map);
@@ -68,7 +70,20 @@ function updateDevicePosition(deviceId, lat, lon) {
     if (heatLayer) heatLayer.setLatLngs(heatPts);
 
     checkGeofences(deviceId, lat, lon);
-    sendToServer('/api/location', { deviceId, deviceName: d.name, lat, lon, sat: d.lastSat, spd: d.lastSpeed, fix: 1 });
+
+    const payload = {
+        deviceId,
+        deviceName: d.name,
+        lat,
+        lon,
+        sat: d.lastSat,
+        spd: d.lastSpeed,
+        fix: 1,
+        mode: currentMode,
+        isNearby: d.isNearby ? true : false,
+        dist: d.isNearby ? estimateDistance(d.nearbyRssi) : 0
+    };
+    sendToServer('/api/location', payload);
 }
 
 function focusDevice(deviceId) {

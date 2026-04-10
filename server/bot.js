@@ -20,7 +20,6 @@ bot.on('polling_error', (err) => {
 
 let subscribedChats = new Set();
 let deviceLocations = {};
-let deviceSOS = {};
 
 const fs = require('fs');
 const CHATS_FILE = __dirname + '/chats.json';
@@ -28,7 +27,7 @@ try {
     if (fs.existsSync(CHATS_FILE)) {
         subscribedChats = new Set(JSON.parse(fs.readFileSync(CHATS_FILE, 'utf8')));
     }
-} catch(e) {}
+} catch (e) { }
 
 function saveChats() {
     fs.writeFileSync(CHATS_FILE, JSON.stringify([...subscribedChats]));
@@ -39,7 +38,6 @@ setInterval(() => {
     for (const name of Object.keys(deviceLocations)) {
         if (now - deviceLocations[name].timestamp > DEVICE_TIMEOUT_MS) {
             delete deviceLocations[name];
-            delete deviceSOS[name];
             console.log(`Device timeout: ${name}`);
         }
     }
@@ -91,15 +89,26 @@ bot.onText(/\/status/, (msg) => {
     names.forEach(name => {
         const d = deviceLocations[name];
         const ago = Date.now() - d.timestamp;
-        const sos = deviceSOS[name] ? '🆘' : '✅';
-        const fixStr = d.fix ? 'Fix ✓' : 'No Fix';
-        text += `${sos} *${name}*\n`;
-        if (d.lat && d.lon && (d.lat !== 0 || d.lon !== 0)) {
-            text += `📍 \`${d.lat.toFixed(6)}, ${d.lon.toFixed(6)}\`\n`;
-        } else {
-            text += `📍 Координаты не получены\n`;
+
+        text += `🟢 *${name}*\n`;
+
+        if (d.mode === 'indoor') {
+            text += `🏢 В помещении\n`;
+        } else if (!d.isNearby) {
+            if (d.lat && d.lon && (d.lat !== 0 || d.lon !== 0)) {
+                text += `📍 \`${d.lat.toFixed(6)}, ${d.lon.toFixed(6)}\`\n`;
+            } else {
+                text += `📍 Координаты не получены\n`;
+            }
         }
-        text += `🛰️ ${d.sat || 0} спутн. · ${fixStr}\n`;
+
+        if (d.isNearby) {
+            text += `📏 Расстояние: ~${d.dist}м от донгла\n`;
+        } else {
+            const fixStr = d.fix ? 'Fix ✓' : 'No Fix';
+            text += `🛰️ ${d.sat || 0} спутн. · ${fixStr}\n`;
+        }
+
         text += `⏱️ ${timeAgo(ago)} назад\n\n`;
     });
     bot.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
@@ -114,9 +123,15 @@ bot.onText(/\/devices/, (msg) => {
     let text = `📋 *Устройства (${names.length}):*\n\n`;
     names.forEach((name, i) => {
         const d = deviceLocations[name];
-        const sos = deviceSOS[name] ? '🆘' : '🟢';
-        const fixStr = d.fix ? 'Fix' : 'No Fix';
-        text += `${i+1}. ${sos} *${name}* — ${fixStr}, 🛰️${d.sat || 0}\n`;
+        if (d.mode === 'indoor') {
+            text += `${i + 1}. 🟢 *${name}* — 🏢 В помещении`;
+        } else if (d.isNearby) {
+            text += `${i + 1}. 🟢 *${name}* — 📏 ~${d.dist}м`;
+        } else {
+            const fixStr = d.fix ? 'Fix' : 'No Fix';
+            text += `${i + 1}. 🟢 *${name}* — ${fixStr}, 🛰️${d.sat || 0}`;
+        }
+        text += `\n`;
     });
     bot.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
 });
@@ -129,19 +144,23 @@ bot.onText(/\/location/, (msg) => {
     }
     names.forEach(name => {
         const d = deviceLocations[name];
-        if (d.lat && d.lon && (d.lat !== 0 || d.lon !== 0)) {
-            bot.sendMessage(msg.chat.id, `📍 *${name}:*`, { parse_mode: 'Markdown' }).catch(() => {});
-            bot.sendLocation(msg.chat.id, d.lat, d.lon).catch(() => {});
+        if (d.mode === 'indoor') {
+            bot.sendMessage(msg.chat.id, `🏢 *${name}:* Устройство в помещении (GPS отключен)`, { parse_mode: 'Markdown' }).catch(() => { });
+        } else if (d.isNearby) {
+            bot.sendMessage(msg.chat.id, `📏 *${name}:* Устройство находится рядом (~${d.dist}м от донгла)`, { parse_mode: 'Markdown' }).catch(() => { });
+        } else if (d.lat && d.lon && (d.lat !== 0 || d.lon !== 0)) {
+            bot.sendMessage(msg.chat.id, `📍 *${name}:*`, { parse_mode: 'Markdown' }).catch(() => { });
+            bot.sendLocation(msg.chat.id, d.lat, d.lon).catch(() => { });
         } else {
-            bot.sendMessage(msg.chat.id, `📍 *${name}:* GPS фикс не получен`, { parse_mode: 'Markdown' }).catch(() => {});
+            bot.sendMessage(msg.chat.id, `📍 *${name}:* GPS фикс не получен`, { parse_mode: 'Markdown' }).catch(() => { });
         }
     });
 });
 
 app.post('/api/location', (req, res) => {
-    const { deviceName, lat, lon, sat, spd, fix } = req.body;
+    const { deviceName, lat, lon, sat, spd, fix, mode, isNearby, dist } = req.body;
     const name = deviceName || 'Unknown';
-    deviceLocations[name] = { lat, lon, sat, spd, fix, timestamp: Date.now() };
+    deviceLocations[name] = { lat, lon, sat, spd, fix, mode, isNearby, dist, timestamp: Date.now() };
     res.json({ ok: true });
 });
 
@@ -149,12 +168,11 @@ app.post('/api/disconnect', (req, res) => {
     const { deviceName } = req.body;
     const name = deviceName || 'Unknown';
     delete deviceLocations[name];
-    delete deviceSOS[name];
     console.log(`Device disconnected: ${name}`);
 
     const message = `🔌 *${name}* отключён`;
     for (const chatId of subscribedChats) {
-        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' }).catch(() => {});
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' }).catch(() => { });
     }
     res.json({ ok: true });
 });
@@ -169,29 +187,16 @@ app.post('/api/track', (req, res) => {
         message = `❌ Устройство *${name}* удалено`;
     } else if (action === 'rename') {
         message = `✏️ *${oldName || '?'}* → *${name}*`;
+    } else if (action === 'lost') {
+        message = `⚠️ Устройство *${name}* потеряно из зоны видимости (отключено)`;
+        delete deviceLocations[name];
     } else {
         return res.json({ ok: true });
     }
     for (const chatId of subscribedChats) {
-        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' }).catch(() => {});
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' }).catch(() => { });
     }
     res.json({ ok: true });
-});
-
-app.post('/api/sos', (req, res) => {
-    const { active, deviceName, lat, lon } = req.body;
-    const name = deviceName || 'Unknown';
-    deviceSOS[name] = active;
-
-    const message = active
-        ? `🆘 *SOS: ${name}*\n\n📍 \`${lat?.toFixed(6) || '—'}, ${lon?.toFixed(6) || '—'}\`\n🕐 ${new Date().toLocaleTimeString('ru-RU')}\n\n🗺️ [Карта](https://www.google.com/maps?q=${lat},${lon})`
-        : `✅ *SOS снят: ${name}*`;
-
-    for (const chatId of subscribedChats) {
-        bot.sendMessage(chatId, message, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(() => {});
-        if (active && lat && lon) bot.sendLocation(chatId, lat, lon).catch(() => {});
-    }
-    res.json({ ok: true, notified: subscribedChats.size });
 });
 
 app.post('/api/geofence', (req, res) => {
@@ -207,7 +212,7 @@ app.post('/api/geofence', (req, res) => {
         `🗺️ [Карта](https://www.google.com/maps?q=${lat},${lon})`;
 
     for (const chatId of subscribedChats) {
-        bot.sendMessage(chatId, message, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(() => {});
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(() => { });
     }
     res.json({ ok: true, notified: subscribedChats.size });
 });
