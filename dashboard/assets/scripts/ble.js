@@ -11,7 +11,7 @@ function parseSts(dv) {
 }
 
 function onLocFor(deviceId) {
-    return function(e) {
+    return function (e) {
         const d = devices.get(deviceId);
         if (!d) return;
         d.nCount++;
@@ -28,7 +28,7 @@ function onLocFor(deviceId) {
 }
 
 function onStsFor(deviceId) {
-    return function(dv) {
+    return function (dv) {
         const d = devices.get(deviceId);
         if (!d) return;
         const s = (dv.target) ? parseSts(dv.target.value) : parseSts(dv);
@@ -49,12 +49,7 @@ function onStsFor(deviceId) {
     };
 }
 
-function onSOSFor(deviceId) {
-    return function(e) {
-        const active = e.target.value.getUint8(0) === 1;
-        handleSOS(deviceId, active);
-    };
-}
+
 
 function parseScan(dv) {
     const result = [];
@@ -105,7 +100,7 @@ function brandIcon(name) {
 }
 
 function onScanFor(deviceId) {
-    return function(e) {
+    return function (e) {
         const list = parseScan(e.target.value);
         nearbyDevices = list;
         renderNearbyDevices();
@@ -116,7 +111,7 @@ async function refreshNearbyList() {
     const btn = document.querySelector('.btn-scan-refresh');
     if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
     log('Сканирование устройств…', 'inf');
-    
+
     let found = false;
     for (const [id, d] of devices) {
         if (d.chrScan) {
@@ -127,12 +122,12 @@ async function refreshNearbyList() {
                 renderNearbyDevices();
                 log(`Найдено ${list.length} устройств`, 'ok');
                 found = true;
-            } catch(e) {
+            } catch (e) {
                 log('Ошибка чтения: ' + e.message, 'err');
             }
         }
     }
-    
+
     if (!found) log('Подключите трекер для сканирования', 'err');
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
 }
@@ -142,8 +137,8 @@ async function readStsFor(deviceId) {
     if (!d || !d.chrSts) return;
     try {
         const v = await d.chrSts.readValue();
-        onStsFor(deviceId)( v );
-    } catch(e) {
+        onStsFor(deviceId)(v);
+    } catch (e) {
         if (d.dev && d.dev.gatt.connected && currentMode !== 'indoor') log(`${d.name}: read err`, 'err');
     }
 }
@@ -191,18 +186,14 @@ async function connectDevice() {
         log(`${deviceName}: Status ✓`, 'ok');
 
         try {
-            state.chrSos = await svc.getCharacteristic(CHR_SOS);
-            await state.chrSos.startNotifications();
-            state.chrSos.addEventListener('characteristicvaluechanged', onSOSFor(deviceId));
-            log(`${deviceName}: SOS ✓`, 'ok');
-        } catch(e) {}
+        } catch (e) { }
 
         try {
             state.chrScan = await svc.getCharacteristic(CHR_SCAN);
             await state.chrScan.startNotifications();
             state.chrScan.addEventListener('characteristicvaluechanged', onScanFor(deviceId));
             log(`${deviceName}: Scan ✓`, 'ok');
-        } catch(e) { log(`${deviceName}: Scan не поддерживается`, 'inf'); }
+        } catch (e) { log(`${deviceName}: Scan не поддерживается`, 'inf'); }
 
         if (btDev.watchAdvertisements) {
             try {
@@ -210,7 +201,7 @@ async function connectDevice() {
                 btDev.addEventListener('advertisementreceived', (e) => {
                     state.rssi = e.rssi;
                 });
-            } catch(e) {}
+            } catch (e) { }
         }
 
         await readStsFor(deviceId);
@@ -225,7 +216,7 @@ async function connectDevice() {
 
         if (devices.size === 1) showModeModal();
 
-    } catch(e) {
+    } catch (e) {
         log('Ошибка: ' + e.message, 'err');
     }
 }
@@ -252,7 +243,7 @@ function onDeviceDisconnect(deviceId) {
     if (d._reconnecting) return;
     d._reconnecting = true;
     if (d.interval) clearInterval(d.interval);
-    
+
     log(`${d.name} отключён — переподключение…`, 'err');
     attemptReconnect(deviceId);
 }
@@ -275,32 +266,30 @@ async function attemptReconnect(deviceId) {
                 await d.chrLoc.startNotifications();
                 d.chrLoc.addEventListener('characteristicvaluechanged', onLocFor(deviceId));
                 log(`${d.name}: Location ✓`, 'ok');
-            } catch(e) {}
+            } catch (e) { }
 
             try {
                 d.chrSts = await svc.getCharacteristic(CHR_STS);
                 /* CHR_STS is a READ characteristic, no notifications */
                 log(`${d.name}: Status ✓`, 'ok');
-            } catch(e) {}
+            } catch (e) { }
 
             try {
                 d.chrScan = await svc.getCharacteristic(CHR_SCAN);
                 await d.chrScan.startNotifications();
                 d.chrScan.addEventListener('characteristicvaluechanged', onScanFor(deviceId));
                 log(`${d.name}: Scan ✓`, 'ok');
-            } catch(e) {}
+            } catch (e) { }
 
             try {
-                const chrSos = await svc.getCharacteristic(CHR_SOS);
-                log(`${d.name}: SOS ✓`, 'ok');
-            } catch(e) {}
+            } catch (e) { }
 
             d.interval = setInterval(() => readStsFor(deviceId), 2000);
             d._reconnecting = false;
             log(`${d.name} переподключён ✓`, 'ok');
             renderDeviceList();
             return; /* success */
-        } catch(e) {
+        } catch (e) {
             log(`Реконнект ${attempt}/3 не удался: ${e.message}`, 'err');
         }
     }
@@ -331,7 +320,7 @@ function renderDeviceList() {
     list.innerHTML = '';
     devices.forEach((d, id) => {
         const card = document.createElement('div');
-        card.className = 'device-card' + (id === selectedDeviceId ? ' active' : '') + (d.sosActive ? ' sos' : '');
+        card.className = 'device-card' + (id === selectedDeviceId ? ' active' : '');
         card.onclick = () => focusDevice(id);
 
         if (d.isNearby) {
@@ -354,11 +343,9 @@ function renderDeviceList() {
                 </div>
             `;
         } else {
-            const statusDot = d.sosActive
-                ? '<span class="material-symbols-outlined" style="font-size:16px;color:#ef4444">warning</span>'
-                : d.fix
-                    ? '<span class="material-symbols-outlined" style="font-size:16px;color:#22c55e">circle</span>'
-                    : '<span class="material-symbols-outlined" style="font-size:16px;color:#eab308">circle</span>';
+            const statusDot = d.fix
+                ? '<span class="material-symbols-outlined" style="font-size:16px;color:#22c55e">circle</span>'
+                : '<span class="material-symbols-outlined" style="font-size:16px;color:#eab308">circle</span>';
             card.innerHTML = `
                 <div class="device-header">
                     <div class="device-color" style="background:${d.color}"></div>
@@ -398,7 +385,7 @@ function renderNearbyDevices() {
 
     const ALLOWED_TYPES = [1, 3, 4];
     const EXCLUDED_NAMES = ['mac', 'windows', 'ibeacon', 'appletv', 'homepod', 'ble_', 'wbb'];
-    const MIN_RSSI = -80;
+    const MIN_RSSI = -100;
     const filtered = nearbyDevices
         .filter(nd => !devices.has('nearby_' + nd.mac))
         .filter(nd => ALLOWED_TYPES.includes(nd.type))
@@ -416,7 +403,7 @@ function renderNearbyDevices() {
                 <div class="nearby-info">
                     <span class="nearby-signal">${bars} ${nd.rssi}dBm</span>
                     <span class="nearby-dist">~${dist}м</span>
-                    <button class="nearby-btn" onclick="trackNearbyDevice('${nd.mac}','${nd.name.replace(/'/g,'')}',${nd.rssi},${nd.type})">+</button>
+                    <button class="nearby-btn" onclick="trackNearbyDevice('${nd.mac}','${nd.name.replace(/'/g, '')}',${nd.rssi},${nd.type})">+</button>
                 </div>
             </div>`;
         }).join('');
@@ -424,6 +411,22 @@ function renderNearbyDevices() {
     const countEl = document.getElementById('nearbyCount');
     if (countEl) countEl.textContent = filtered.length;
     updateTrackedNearbyPositions();
+    checkNearbyTimeouts();
+}
+
+function checkNearbyTimeouts() {
+    const now = Date.now();
+    devices.forEach((d, id) => {
+        if (d.isNearby) {
+            if (!d.lastSeen) d.lastSeen = now;
+            if (now - d.lastSeen > 30000) {
+                log(`Устройство ${d.name} потеряно`, 'err');
+                sendToServer('/api/track', { deviceName: d.name, action: 'lost' });
+                disconnectDevice(id);
+                renderNearbyDevices();
+            }
+        }
+    });
 }
 
 function trackNearbyDevice(mac, name, rssi, type) {
@@ -509,7 +512,7 @@ function getSavedName(mac) {
     try {
         const map = JSON.parse(localStorage.getItem('deviceNames') || '{}');
         return map[mac] || null;
-    } catch(e) { return null; }
+    } catch (e) { return null; }
 }
 
 function saveName(mac, name) {
@@ -517,7 +520,7 @@ function saveName(mac, name) {
         const map = JSON.parse(localStorage.getItem('deviceNames') || '{}');
         map[mac] = name;
         localStorage.setItem('deviceNames', JSON.stringify(map));
-    } catch(e) {}
+    } catch (e) { }
 }
 
 function renameDevice(deviceId) {
@@ -625,5 +628,5 @@ setInterval(() => {
 }, 2000);
 
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').then(() => console.log('SW registered')).catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then(() => console.log('SW registered')).catch(() => { });
 }

@@ -1,7 +1,6 @@
 const SVC = '12340001-1234-5678-1234-56789abcdef0';
 const CHR_LOC = '12340002-1234-5678-1234-56789abcdef0';
 const CHR_STS = '12340003-1234-5678-1234-56789abcdef0';
-const CHR_SOS = '12340004-1234-5678-1234-56789abcdef0';
 const CHR_SCAN = '12340005-1234-5678-1234-56789abcdef0';
 
 const API_URL = ''; // Nginx proxies /api and everything locally instead of port 3001 directly.
@@ -35,12 +34,12 @@ function createDeviceState(id, name, color) {
     return {
         id, name, color,
         dev: null, srv: null,
-        chrLoc: null, chrSts: null, chrSos: null, chrScan: null,
+        chrLoc: null, chrSts: null, chrScan: null,
         marker: null, track: null, label: null,
         pts: [], trackHistory: [],
         lastLat: 0, lastLon: 0,
         lastSpeed: 0, lastSat: 0,
-        fix: false, sosActive: false,
+        fix: false,
         activity: '—', activityIcon: '',
         sat: 0, spd: 0, alt: 0,
         interval: null, nCount: 0

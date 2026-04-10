@@ -178,17 +178,6 @@ body {
     background: rgba(78,124,255,.06);
 }
 
-.device-card.sos {
-    border-color: var(--red);
-    background: rgba(239,68,68,.08);
-    animation: sosGlow .8s infinite alternate;
-}
-
-@keyframes sosGlow {
-    from { box-shadow: 0 0 0 rgba(239,68,68,0); }
-    to   { box-shadow: 0 0 12px rgba(239,68,68,.3); }
-}
-
 .device-header {
     display: flex;
     align-items: center;
@@ -269,31 +258,6 @@ body {
     display: flex;
     gap: 8px;
 }
-
-.sos-banner {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    z-index: 9999;
-    background: linear-gradient(135deg, #dc2626, #b91c1c);
-    color: #fff;
-    padding: 12px 20px;
-    display: none;
-    align-items: center;
-    gap: 10px;
-    font: 600 14px var(--font);
-    box-shadow: 0 4px 20px rgba(220,38,38,.5);
-}
-.sos-banner.show { display: flex; }
-.sos-banner .material-symbols-outlined {
-    font-size: 24px;
-    animation: sosPulse 1s infinite;
-}
-@keyframes sosPulse {
-    0%,100% { opacity: 1; }
-    50%     { opacity: .3; }
-}
-
-
 
 .safety-actions {
     display: flex;
