@@ -136,11 +136,11 @@ function simplify(pts, tol) {
 }
 
 function perpDist(p, a, b) {
-    const dx = b[0]-a[0], dy = b[1]-a[1];
-    const len2 = dx*dx + dy*dy;
-    if (len2 === 0) return Math.sqrt((p[0]-a[0])**2 + (p[1]-a[1])**2);
-    const t = ((p[0]-a[0])*dx + (p[1]-a[1])*dy) / len2;
-    return Math.sqrt((p[0]-(a[0]+t*dx))**2 + (p[1]-(a[1]+t*dy))**2);
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) return Math.sqrt((p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2);
+    const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
+    return Math.sqrt((p[0] - (a[0] + t * dx)) ** 2 + (p[1] - (a[1] + t * dy)) ** 2);
 }
 
 function removeGeofences() {
@@ -179,7 +179,6 @@ function checkGeofences(deviceId, lat, lon) {
 
         if (wasIn && !isIn) {
             log(`⚠️ ${dev.name} ВЫШЕЛ из зоны "${zone.name}"!`, 'err');
-            showAlert(`${dev.name} покинул зону "${zone.name}"!`);
             sendToServer('/api/geofence', { event: 'exit', deviceName: dev.name, zoneName: zone.name, lat, lon });
         } else if (!wasIn && isIn) {
             log(`✅ ${dev.name} вернулся в зону "${zone.name}"`, 'ok');
@@ -213,5 +212,5 @@ function loadGeofences() {
             isInsideZone[z.id] = {};
         });
         if (data.length) log(`Загружено ${data.length} геозон`, 'inf');
-    } catch(e) {}
+    } catch (e) { }
 }
