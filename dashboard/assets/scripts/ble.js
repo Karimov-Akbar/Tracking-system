@@ -350,9 +350,19 @@ function renderDeviceList() {
                 </div>
             `;
         } else {
-            const statusDot = d.fix
-                ? '<span class="material-symbols-outlined" style="font-size:16px;color:#22c55e">circle</span>'
-                : '<span class="material-symbols-outlined" style="font-size:16px;color:#eab308">circle</span>';
+            const dotColor = (d.fix || currentMode === 'indoor') ? '#22c55e' : '#eab308';
+            const statusDot = `<span class="material-symbols-outlined" style="font-size:16px;color:${dotColor}">circle</span>`;
+            
+            let statsHtml = '';
+            if (currentMode === 'indoor') {
+                statsHtml = `<span>🏢 В помещении</span>`;
+            } else {
+                statsHtml = `
+                    <span>${d.fix ? 'Fix' : 'No Fix'}</span>
+                    <span><span class="material-symbols-outlined" style="font-size:13px">satellite_alt</span> ${d.sat}</span>
+                `;
+            }
+
             card.innerHTML = `
                 <div class="device-header">
                     <div class="device-color" style="background:${d.color}"></div>
@@ -360,8 +370,7 @@ function renderDeviceList() {
                     <button class="device-disconnect" onclick="event.stopPropagation();disconnectDevice('${id}')" title="Отключить">✕</button>
                 </div>
                 <div class="device-stats">
-                    <span>${d.fix ? 'Fix' : 'No Fix'}</span>
-                    <span><span class="material-symbols-outlined" style="font-size:13px">satellite_alt</span> ${d.sat}</span>
+                    ${statsHtml}
                 </div>
             `;
         }
