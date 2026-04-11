@@ -179,10 +179,12 @@ function checkGeofences(deviceId, lat, lon) {
 
         if (wasIn && !isIn) {
             log(`⚠️ ${dev.name} ВЫШЕЛ из зоны "${zone.name}"!`, 'err');
-            sendToServer('/api/geofence', { event: 'exit', deviceName: dev.name, zoneName: zone.name, lat, lon });
+            const dist = typeof currentMode !== 'undefined' && currentMode === 'indoor' ? Math.round(distM(lat, lon, zone.lat, zone.lon)) : null;
+            sendToServer('/api/geofence', { event: 'exit', deviceName: dev.name, zoneName: zone.name, lat, lon, mode: typeof currentMode !== 'undefined' ? currentMode : 'outdoor', dist, radius: zone.radius });
         } else if (!wasIn && isIn) {
             log(`✅ ${dev.name} вернулся в зону "${zone.name}"`, 'ok');
-            sendToServer('/api/geofence', { event: 'enter', deviceName: dev.name, zoneName: zone.name, lat, lon });
+            const dist = typeof currentMode !== 'undefined' && currentMode === 'indoor' ? Math.round(distM(lat, lon, zone.lat, zone.lon)) : null;
+            sendToServer('/api/geofence', { event: 'enter', deviceName: dev.name, zoneName: zone.name, lat, lon, mode: typeof currentMode !== 'undefined' ? currentMode : 'outdoor', dist, radius: zone.radius });
         }
 
         isInsideZone[zone.id][deviceId] = isIn;
