@@ -200,16 +200,24 @@ app.post('/api/track', (req, res) => {
 });
 
 app.post('/api/geofence', (req, res) => {
-    const { event, deviceName, zoneName, lat, lon } = req.body;
+    const { event, deviceName, zoneName, lat, lon, mode, dist, radius } = req.body;
     const name = deviceName || 'Unknown';
     const emoji = event === 'exit' ? '🚨' : '✅';
     const action = event === 'exit' ? 'ПОКИНУЛ' : 'ВЕРНУЛСЯ в';
 
-    const message =
-        `${emoji} *${name} ${action} зону "${zoneName}"*\n\n` +
-        `📍 \`${lat?.toFixed(6) || '—'}, ${lon?.toFixed(6) || '—'}\`\n` +
-        `🕐 ${new Date().toLocaleTimeString('ru-RU')}\n\n` +
-        `🗺️ [Карта](https://www.google.com/maps?q=${lat},${lon})`;
+    let message = `${emoji} *${name} ${action} зону "${zoneName}"*\n\n`;
+
+    if (mode === 'indoor') {
+        message += `🏢 Режим помещения\n`;
+        if (event === 'exit') {
+            message += `📏 Отдалился на ~${dist || '?'}м (зона: ${radius || '?'}м)\n`;
+        }
+    } else {
+        message += `📍 \`${lat?.toFixed(6) || '—'}, ${lon?.toFixed(6) || '—'}\`\n`;
+        message += `🗺️ [Карта](https://www.google.com/maps?q=${lat},${lon})\n`;
+    }
+
+    message += `🕐 ${new Date().toLocaleTimeString('ru-RU')}`;
 
     for (const chatId of subscribedChats) {
         bot.sendMessage(chatId, message, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(() => { });
