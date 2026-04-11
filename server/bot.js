@@ -7,7 +7,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3001;
 const TRACKER_URL = process.env.TRACKER_URL || 'https://tracker.muhandisd.uz';
 
-const DEVICE_TIMEOUT_MS = 60_000;
+const DEVICE_TIMEOUT_MS = 130_000;
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: { interval: 1000, params: { timeout: 10 } } });
 const app = express();
