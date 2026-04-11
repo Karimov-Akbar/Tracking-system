@@ -523,7 +523,7 @@ function updateTrackedNearbyPositions() {
                 isNearby: true,
                 dist: estimateDistance(nd.rssi)
             });
-            if (baseLat && typeof checkGeofences === 'function') {
+            if (baseLat !== null && typeof checkGeofences === 'function') {
                 const distNum = parseFloat(estimateDistance(nd.rssi)) || 1;
                 const angle = d._angle || (Math.random() * Math.PI * 2);
                 d._angle = angle + 0.1;
