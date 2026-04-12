@@ -33,7 +33,18 @@ function onStsFor(deviceId) {
         if (!d) return;
         const s = (dv.target) ? parseSts(dv.target.value) : parseSts(dv);
         if (!s) return;
-        d.fix = !!s.fix;
+
+        const currentFix = !!s.fix;
+        if (!currentFix && d.fix) {
+            d._fixLostTime = d._fixLostTime || Date.now();
+            if (Date.now() - d._fixLostTime > 4000) {
+                d.fix = false;
+            }
+        } else {
+            d._fixLostTime = null;
+            d.fix = currentFix;
+        }
+
         d.lastSpeed = s.spd;
         d.lastSat = s.sat;
         d.sat = s.sat;
