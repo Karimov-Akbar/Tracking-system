@@ -67,7 +67,7 @@ function updateDevicePosition(deviceId, lat, lon) {
 
     heatPts.push([lat, lon, 0.5]);
     if (heatPts.length > 3000) heatPts.shift();
-    if (heatLayer) heatLayer.setLatLngs(heatPts);
+    if (heatLayer && map.hasLayer(heatLayer)) heatLayer.setLatLngs(heatPts);
 
     checkGeofences(deviceId, lat, lon);
 
