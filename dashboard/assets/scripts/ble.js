@@ -181,6 +181,8 @@ async function connectDevice() {
         btDev.addEventListener('gattserverdisconnected', () => onDeviceDisconnect(deviceId));
 
         const server = await btDev.gatt.connect();
+        await new Promise(r => setTimeout(r, 600));
+        
         state.srv = server;
         const svc = await server.getPrimaryService(SVC);
 
@@ -191,9 +193,6 @@ async function connectDevice() {
 
         state.chrSts = await svc.getCharacteristic(CHR_STS);
         log(`${deviceName}: Status ✓`, 'ok');
-
-        try {
-        } catch (e) { }
 
         try {
             state.chrScan = await svc.getCharacteristic(CHR_SCAN);
@@ -225,6 +224,13 @@ async function connectDevice() {
 
     } catch (e) {
         log('Ошибка: ' + e.message, 'err');
+        for (const [id, d] of devices.entries()) {
+            if (d.dev && (!d.chrSts || !d.chrLoc)) {
+                devices.delete(id);
+                renderDeviceList();
+                updateDeviceCount();
+            }
+        }
     }
 }
 
@@ -521,6 +527,20 @@ function updateTrackedNearbyPositions() {
         if (!d) return;
         d.nearbyRssi = nd.rssi;
 
+        const distNum = parseFloat(estimateDistance(nd.rssi)) || 1;
+        const angle = d._angle || (Math.random() * Math.PI * 2);
+        d._angle = angle + 0.1;
+
+        let curLat = baseLat || 0;
+        let curLon = baseLon || 0;
+
+        if (baseLat !== null) {
+            const dLat = (distNum / 111320) * Math.cos(angle);
+            const dLon = (distNum / (111320 * Math.cos(baseLat * Math.PI / 180))) * Math.sin(angle);
+            curLat = baseLat + dLat;
+            curLon = baseLon + dLon;
+        }
+
         if (currentMode === 'indoor') {
             sendToServer('/api/location', {
                 deviceId: did,
@@ -530,18 +550,11 @@ function updateTrackedNearbyPositions() {
                 sat: 0, spd: 0, fix: 1,
                 mode: 'indoor',
                 isNearby: true,
-                dist: estimateDistance(nd.rssi)
+                dist: Math.round(distNum)
             });
-            if (baseLat !== null && typeof checkGeofences === 'function') {
-                const distNum = parseFloat(estimateDistance(nd.rssi)) || 1;
-                const angle = d._angle || (Math.random() * Math.PI * 2);
-                d._angle = angle + 0.1;
-                const dLat = (distNum / 111320) * Math.cos(angle);
-                const dLon = (distNum / (111320 * Math.cos(baseLat * Math.PI / 180))) * Math.sin(angle);
-                checkGeofences(did, baseLat + dLat, baseLon + dLon);
-            }
+            if (typeof checkGeofences === 'function') checkGeofences(did, curLat, curLon);
         } else {
-            updateDevicePosition(did, baseLat, baseLon);
+            updateDevicePosition(did, curLat, curLon);
         }
     });
 }
