@@ -54,7 +54,8 @@ function onStsFor(deviceId) {
         d.activityIcon = act.icon;
         const loader = document.getElementById('gpsLoader');
         if (loader && !d.isNearby && currentMode !== 'indoor') {
-            loader.style.display = d.fix ? 'none' : 'flex';
+            const hasLastLoc = (d.lastLat && d.lastLon && (d.lastLat !== 0 || d.lastLon !== 0));
+            loader.style.display = (d.fix || hasLastLoc) ? 'none' : 'flex';
         }
         renderDeviceList();
     };
