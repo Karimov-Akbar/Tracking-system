@@ -286,7 +286,6 @@ It connects directly to the tracker via **Web Bluetooth API** — no intermediat
 | 🔥 **Heatmap** | `leaflet.heat`, up to 3 000 points |
 | 📥 **GPX Export** | GPX 1.1 format with timestamps, up to 1 000 track points |
 | 🔍 **BLE Scanner** | Lists nearby devices via CHR_SCAN; add to map as tracked objects |
-| 🏃 **Activity** | Speed-based: Standing · Walking · Running · Cycling · Driving |
 | 🔄 **Auto-reconnect** | Up to 3 attempts with exponential back-off (2–6 s) |
 
 ---
