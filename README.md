@@ -264,6 +264,9 @@ screen /dev/ttyACM0 115200
 
 ## 🌐 Dashboard
 
+
+<img src="images/dashboard.png" alt="Dashboard"/>
+
 The dashboard is a **Progressive Web App** hosted at [`tracker.muhandisd.uz`](https://tracker.muhandisd.uz).  
 It connects directly to the tracker via **Web Bluetooth API** — no intermediate server, no app installation.
 
@@ -326,6 +329,8 @@ location /api/ {
 ---
 
 ### Bot Commands
+
+<img src="images/bot.png" alt="Bot"/>
 
 | Command | Description |
 |---|---|
