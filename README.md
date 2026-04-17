@@ -403,6 +403,4 @@ Feel free to fork, modify and use in your own projects.
 Made with ❤️ at **Kimyo International University in Tashkent**  
 Direction: *Information System Engineering*
 
-**[⬆ Back to top](#gps-tracker)**
-
 </div>
