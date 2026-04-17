@@ -15,8 +15,6 @@
 
 </div>
 
----
-
 ## 📋 Table of Contents
 
 - [About](#-about)
@@ -37,8 +35,6 @@
 - [Getting Started](#-getting-started)
 - [License](#-license)
 
----
-
 ## 🛰 About
 
 GPS Tracker is an open-source, end-to-end location monitoring system built around the **Nordic nRF52840** microcontroller and **u-blox NEO-6M** GPS module. It transmits live coordinates over **Bluetooth Low Energy** directly to any Web Bluetooth-capable browser — no mobile app required.
@@ -46,8 +42,6 @@ GPS Tracker is an open-source, end-to-end location monitoring system built aroun
 The web dashboard connects to the tracker, displays position on an interactive map, supports geofences, heatmaps, and GPX export. A **Telegram bot** delivers instant alerts when a device leaves a geofence or disconnects.
 
 > 🎓 Developed as a Bachelor's thesis project at **Kimyo International University in Tashkent (KIUT)**, Direction: *Information System Engineering*.
-
----
 
 ## ✨ Features
 
@@ -65,8 +59,6 @@ The web dashboard connects to the tracker, displays position on an interactive m
 | 📲 **Telegram Bot** | Commands + auto-alerts for geofence events |
 | 🔋 **Battery** | ~42 hours on 2 × 18650 Li-ion cells |
 | 📂 **Open Source** | Full firmware, dashboard & server code on GitHub |
-
----
 
 ## 🏗 System Architecture
 
@@ -105,8 +97,6 @@ The web dashboard connects to the tracker, displays position on an interactive m
                   📲 Telegram users
 ```
 
----
-
 ## 🔧 Hardware
 
 ### Components
@@ -131,8 +121,6 @@ The web dashboard connects to the tracker, displays position on an interactive m
 
 > ⏱ Estimated runtime with 2 × 2 200 mAh cells: **~42 hours**
 
----
-
 ### BLE GATT Service
 
 Base UUID: `12345678-1234-5678-1234-56789ABCDEF0`
@@ -151,8 +139,6 @@ Base UUID: `12345678-1234-5678-1234-56789ABCDEF0`
 
 Device types: `0` Unknown · `1` Phone · `2` Computer · `3` Watch · `4` Headphones · `5` Speaker · `6` TV · `7` Tag · `8` Generic
 
----
-
 ### Wiring
 
 ```
@@ -163,8 +149,6 @@ P0.15 (RX)        ◄──────  TX
 GND               ──────── GND
 3.3V              ──────── VCC  (from DC-DC output)
 ```
-
----
 
 ## 💾 Firmware
 
@@ -214,8 +198,6 @@ if (gps_data.fix_valid) {
 ble_gps_service_location_update(&m_gps_service, &gps_data);
 ```
 
----
-
 ### Build Instructions
 
 **Prerequisites:**
@@ -258,8 +240,6 @@ screen /dev/ttyACM0 115200
 # Windows — use PuTTY on the virtual COM port
 ```
 
----
-
 ## 🌐 Dashboard
 
 
@@ -288,8 +268,6 @@ It connects directly to the tracker via **Web Bluetooth API** — no intermediat
 | 📥 **GPX Export** | GPX 1.1 format with timestamps, up to 1 000 track points |
 | 🔍 **BLE Scanner** | Lists nearby devices via CHR_SCAN; add to map as tracked objects |
 | 🔄 **Auto-reconnect** | Up to 3 attempts with exponential back-off (2–6 s) |
-
----
 
 ## 📡 Server & Telegram Bot
 
@@ -324,8 +302,6 @@ location /api/ {
 
 **Device timeout:** if no data is received for **130 seconds**, the device is considered offline and removed from memory.
 
----
-
 ### Bot Commands
 
 <img src="images/bot.png" alt="Bot"/>
@@ -345,8 +321,6 @@ location /api/ {
 - 🔌 A device **disconnects**
 - 📌 A nearby BLE device is **added / removed / renamed**
 
----
-
 ### API Endpoints
 
 | Method | Endpoint | Description |
@@ -358,8 +332,6 @@ location /api/ {
 | `GET` | `/api/health` | Server health: subscribers, active devices |
 
 All endpoints are called automatically by the browser dashboard — no manual interaction required.
-
----
 
 ## 🚀 Getting Started
 
@@ -382,8 +354,6 @@ cd server && npm install && BOT_TOKEN=xxx npm start
 # 3. Click "Add device" and pair with the tracker
 ```
 
----
-
 ## 📊 Project Stats
 
 | Component | Language | Lines |
@@ -392,14 +362,10 @@ cd server && npm install && BOT_TOKEN=xxx npm start
 | Dashboard (`dashboard/assets/scripts/`) | JavaScript | ~1 130 |
 | Server (`server/bot.js`) | Node.js | ~240 |
 
----
-
 ## 📄 License
 
 This project is licensed under the **MIT License**.  
 Feel free to fork, modify and use in your own projects.
-
----
 
 <div align="center">
 
