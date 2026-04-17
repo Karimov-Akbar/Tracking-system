@@ -1,3 +1,8 @@
+<meta property="og:title" content="GPS Tracker IoT System" />
+<meta property="og:description" content="Real-time GPS + BLE tracking system" />
+<meta property="og:url" content="https://tracker.muhandisd.uz" />
+<meta property="og:type" content="website" />
+
 <div align="center">
 
 <img src="dashboard/assets/icons/icon-512.png" alt="GPS Tracker Logo" width="100"/>
