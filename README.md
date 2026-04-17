@@ -404,3 +404,5 @@ Made with ❤️ at **Kimyo International University in Tashkent**
 Direction: *Information System Engineering*
 
 </div>
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:00F7FF,100:007CF0&height=120&section=footer&width=100%" width="100%"/>
