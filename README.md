@@ -11,9 +11,7 @@
 [![BLE](https://img.shields.io/badge/BLE-5.0-blueviolet)](https://www.nordicsemi.com)
 [![Platform](https://img.shields.io/badge/Platform-nRF52840-orange)](https://www.nordicsemi.com/Products/nRF52840)
 [![PWA](https://img.shields.io/badge/Dashboard-PWA-brightgreen)](https://tracker.muhandisd.uz)
-[![Telegram Bot](https://img.shields.io/badge/Bot-@gps__tracker__alert__bot-2CA5E0?logo=telegram)](https://t.me/gps_tracker_alert_bot)
-
-[Live Demo](https://tracker.muhandisd.uz) · [Telegram Bot](https://t.me/gps_tracker_alert_bot) · [Report Bug](https://github.com/Karimov-Akbar/Tracking-system/issues)
+[![Telegram Bot](https://img.shields.io/badge/Bot-@gps__tracker__alert__bot-2CA5E0)](https://t.me/gps_tracker_alert_bot)
 
 </div>
 
