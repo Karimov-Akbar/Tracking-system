@@ -337,7 +337,7 @@ void gps_uart_configure(void)
      *
      * Key settings:
      *   mask     = 0x0005 → apply dynModel + fixMode
-     *   dynModel = 2      → Stationary (max sensitivity, best for indoor)
+     *   dynModel = 3      → Pedestrian (best for portable trackers)
      *   fixMode  = 3      → Auto 2D/3D (accepts 2D fix with 3 satellites)
      *   minElev  = 5      → 5° minimum elevation (accept low satellites)
      */
