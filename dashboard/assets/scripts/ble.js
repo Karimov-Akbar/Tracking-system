@@ -306,9 +306,6 @@ async function attemptReconnect(deviceId) {
                 log(`${d.name}: Scan ✓`, 'ok');
             } catch (e) { }
 
-            try {
-            } catch (e) { }
-
             d.interval = setInterval(() => readStsFor(deviceId), 2000);
             d._reconnecting = false;
             log(`${d.name} переподключён ✓`, 'ok');
