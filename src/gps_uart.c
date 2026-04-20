@@ -347,8 +347,8 @@ void gps_uart_configure(void)
     cfg_nav5[0] = 0x05;
     cfg_nav5[1] = 0x00;
 
-    /* dynModel: 2 = Stationary (highest sensitivity) */
-    cfg_nav5[2] = 0x02;
+    /* dynModel: 3 = Pedestrian (best for wearable/portable trackers) */
+    cfg_nav5[2] = 0x03;
 
     /* fixMode: 3 = Auto 2D/3D */
     cfg_nav5[3] = 0x03;
@@ -383,68 +383,13 @@ void gps_uart_configure(void)
 
     send_ubx_message(0x06, 0x24, cfg_nav5, sizeof(cfg_nav5));
 
-    NRF_LOG_INFO("GPS configured: Stationary mode, Auto 2D/3D, minElev=5");
-
-    /*
-     * UBX-CFG-RXM: Power Management Configuration
-     * Class=0x06, ID=0x11, Length=2 bytes
-     *
-     * Enable Power Save Mode — GPS enters low-power cyclic tracking
-     * after acquiring fix, reducing consumption from ~35mA to ~11mA.
-     */
-    uint8_t cfg_rxm[2] = {0};
-    cfg_rxm[0] = 0x00;  /* reserved */
-    cfg_rxm[1] = 0x01;  /* lpMode: 1 = Power Save Mode */
-
-    send_ubx_message(0x06, 0x11, cfg_rxm, sizeof(cfg_rxm));
-
-    NRF_LOG_INFO("GPS Power Save Mode enabled");
-
-    /*
-     * UBX-CFG-PM2: Extended Power Management (optional tuning)
-     * Class=0x06, ID=0x3B, Length=44 bytes
-     *
-     * Configure cyclic tracking parameters:
-     *   maxStartupStateDur = 0 (auto)
-     *   updatePeriod       = 1000ms (1 Hz updates)
-     *   searchPeriod       = 10000ms (re-acquisition every 10s if lost)
-     *   onTime             = 1000ms
-     */
-    uint8_t cfg_pm2[44] = {0};
-
-    /* flags: bit 4 = extintWake, bit 6 = updateEPH */
-    cfg_pm2[4] = 0x00;
-    cfg_pm2[5] = 0x11;  /* doNotEnterOff | updateRTC */
-    cfg_pm2[6] = 0x00;
-    cfg_pm2[7] = 0x00;
-
-    /* updatePeriod: 1000ms (bytes 8-11, little-endian) */
-    cfg_pm2[8]  = 0xE8;
-    cfg_pm2[9]  = 0x03;
-    cfg_pm2[10] = 0x00;
-    cfg_pm2[11] = 0x00;
-
-    /* searchPeriod: 10000ms (bytes 12-15) */
-    cfg_pm2[12] = 0x10;
-    cfg_pm2[13] = 0x27;
-    cfg_pm2[14] = 0x00;
-    cfg_pm2[15] = 0x00;
-
-    /* onTime: 1000ms (bytes 20-23) */
-    cfg_pm2[20] = 0xE8;
-    cfg_pm2[21] = 0x03;
-    cfg_pm2[22] = 0x00;
-    cfg_pm2[23] = 0x00;
-
-    send_ubx_message(0x06, 0x3B, cfg_pm2, sizeof(cfg_pm2));
-
-    NRF_LOG_INFO("GPS PM2 configured: 1Hz update, 10s search period");
+    NRF_LOG_INFO("GPS configured: Pedestrian mode, Auto 2D/3D, minElev=5");
 
     /*
      * UBX-CFG-CFG: Save all configuration to BBR + EEPROM
      * Class=0x06, ID=0x09, Length=13 bytes
      *
-     * This ensures NAV5, PM2, and RXM settings survive power cycles
+     * This ensures NAV5 settings survive power cycles
      * (requires backup battery on NEO-6M VBAT pin, or EEPROM).
      *
      * clearMask  = 0x00000000 (don't clear anything)
