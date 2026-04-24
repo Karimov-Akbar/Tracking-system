@@ -11,6 +11,7 @@
 #include "app_error.h"
 #include "nrf_uart.h"
 #include "nrf_log.h"
+#include "nrf_delay.h"
 
 /** @brief UART FIFO buffer sizes */
 #define UART_TX_BUF_SIZE    64
@@ -332,8 +333,63 @@ void gps_uart_configure(void)
     }
 
     /*
-     * UBX-CFG-NAV5: Navigation Engine Settings
-     * Class=0x06, ID=0x24, Length=36 bytes
+     * STEP 0: Factory-reset all saved GPS module settings.
+     * UBX-CFG-CFG: Class=0x06, ID=0x09, Length=13 bytes
+     *
+     * clearMask = 0x0000FFFF (clear ALL saved config sections)
+     * saveMask  = 0x00000000 (don't save yet)
+     * loadMask  = 0x0000FFFF (reload defaults from ROM)
+     * deviceMask = 0x17      (BBR + Flash + EEPROM)
+     *
+     * This wipes any Power Save Mode, PM2, or other stale settings
+     * that were previously saved to the NEO-6M's internal flash.
+     */
+    uint8_t cfg_reset[13] = {0};
+
+    /* clearMask: bytes 0-3 = 0xFFFF (clear everything) */
+    cfg_reset[0] = 0xFF;
+    cfg_reset[1] = 0xFF;
+    cfg_reset[2] = 0x00;
+    cfg_reset[3] = 0x00;
+
+    /* saveMask: bytes 4-7 = 0 (don't save) */
+
+    /* loadMask: bytes 8-11 = 0xFFFF (reload ROM defaults) */
+    cfg_reset[8]  = 0xFF;
+    cfg_reset[9]  = 0xFF;
+    cfg_reset[10] = 0x00;
+    cfg_reset[11] = 0x00;
+
+    /* deviceMask: byte 12 = BBR | Flash | EEPROM */
+    cfg_reset[12] = 0x17;
+
+    send_ubx_message(0x06, 0x09, cfg_reset, sizeof(cfg_reset));
+
+    NRF_LOG_INFO("GPS: factory reset sent (clearing old PSM config)");
+
+    /* Give the module time to process the reset */
+    nrf_delay_ms(200);
+
+    /*
+     * STEP 1: Explicitly disable Power Save Mode.
+     * UBX-CFG-RXM: Class=0x06, ID=0x11, Length=2 bytes
+     *
+     * lpMode = 0 → Continuous mode (no sleeping, full acquisition power)
+     *
+     * This overrides any remnant PSM config that may have survived
+     * in the module's volatile memory after the factory reset.
+     */
+    uint8_t cfg_rxm[2] = {0};
+    cfg_rxm[0] = 0x00;  /* reserved */
+    cfg_rxm[1] = 0x00;  /* lpMode: 0 = Continuous (PSM OFF) */
+
+    send_ubx_message(0x06, 0x11, cfg_rxm, sizeof(cfg_rxm));
+
+    NRF_LOG_INFO("GPS: Power Save Mode explicitly DISABLED");
+
+    /*
+     * STEP 2: Configure navigation model.
+     * UBX-CFG-NAV5: Class=0x06, ID=0x24, Length=36 bytes
      *
      * Key settings:
      *   mask     = 0x0005 → apply dynModel + fixMode
@@ -386,23 +442,17 @@ void gps_uart_configure(void)
     NRF_LOG_INFO("GPS configured: Pedestrian mode, Auto 2D/3D, minElev=5");
 
     /*
-     * UBX-CFG-CFG: Save all configuration to BBR + EEPROM
-     * Class=0x06, ID=0x09, Length=13 bytes
+     * STEP 3: Save all current settings to BBR + EEPROM.
+     * UBX-CFG-CFG: Class=0x06, ID=0x09, Length=13 bytes
      *
-     * This ensures NAV5 settings survive power cycles
-     * (requires backup battery on NEO-6M VBAT pin, or EEPROM).
-     *
-     * clearMask  = 0x00000000 (don't clear anything)
-     * saveMask   = 0x0000001F (save all sections: ioPort, msgConf,
-     *              infMsg, navConf, rxmConf)
-     * loadMask   = 0x00000000 (don't load, just save)
-     * deviceMask = 0x17       (BBR + Flash + EEPROM — save everywhere)
+     * This ensures the CLEAN config (no PSM, Pedestrian mode)
+     * is saved and will survive power cycles.
      */
     uint8_t cfg_cfg[13] = {0};
 
-    /* clearMask: bytes 0-3 = 0 */
+    /* clearMask: bytes 0-3 = 0 (don't clear again) */
 
-    /* saveMask: bytes 4-7 = 0x1F (all config sections) */
+    /* saveMask: bytes 4-7 = 0x1F (save all config sections) */
     cfg_cfg[4] = 0x1F;
     cfg_cfg[5] = 0x00;
     cfg_cfg[6] = 0x00;
@@ -415,5 +465,5 @@ void gps_uart_configure(void)
 
     send_ubx_message(0x06, 0x09, cfg_cfg, sizeof(cfg_cfg));
 
-    NRF_LOG_INFO("GPS config saved to BBR/EEPROM (hot start enabled)");
+    NRF_LOG_INFO("GPS config saved to BBR/EEPROM (PSM cleared, hot start enabled)");
 }
