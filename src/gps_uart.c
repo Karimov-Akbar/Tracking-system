@@ -58,13 +58,6 @@ static void uart_event_handler(app_uart_evt_t *p_event)
 }
 
 
-/* Forward declarations for GPS config functions */
-static void gps_send_str(const char *str);
-static void gps_send_nmea(const char *body);
-static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16_t plen);
-static void gps_send_config(void);
-
-
 uint32_t gps_uart_init(gps_uart_line_handler_t line_handler)
 {
     if (m_initialized)
@@ -100,89 +93,11 @@ uint32_t gps_uart_init(gps_uart_line_handler_t line_handler)
     {
         m_initialized = true;
         NRF_LOG_INFO("GPS UART initialized (RX=P0.15, TX=P0.17, 9600 baud)");
-
-        /* Configure NEO-6M for max accuracy and fast start */
-        gps_send_config();
+        /* GPS module configuration is done in gps_uart_configure(),
+         * called separately from main.c after init. */
     }
 
     return err_code;
-}
-
-
-/**
- * @brief Send a string to GPS module via UART.
- */
-static void gps_send_str(const char *str)
-{
-    while (*str) {
-        app_uart_put(*str++);
-    }
-}
-
-/**
- * @brief Calculate NMEA checksum and send command with $...*XX\r\n
- */
-static void gps_send_nmea(const char *body)
-{
-    uint8_t cksum = 0;
-    for (const char *p = body; *p; p++) cksum ^= *p;
-
-    char buf[80];
-    int len = snprintf(buf, sizeof(buf), "$%s*%02X\r\n", body, cksum);
-    (void)len;
-    gps_send_str(buf);
-}
-
-/**
- * @brief Send UBX binary command to GPS.
- */
-static void gps_send_ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16_t plen)
-{
-    uint8_t ck_a = 0, ck_b = 0;
-
-    app_uart_put(0xB5);
-    app_uart_put(0x62);
-
-    uint8_t hdr[4] = { cls, id, (uint8_t)(plen & 0xFF), (uint8_t)(plen >> 8) };
-    for (int i = 0; i < 4; i++) { app_uart_put(hdr[i]); ck_a += hdr[i]; ck_b += ck_a; }
-    for (int i = 0; i < plen; i++) { app_uart_put(payload[i]); ck_a += payload[i]; ck_b += ck_a; }
-
-    app_uart_put(ck_a);
-    app_uart_put(ck_b);
-}
-
-/**
- * @brief Configure NEO-6M for max accuracy and hot start.
- */
-static void gps_send_config(void)
-{
-    /* 1. Disable unused NMEA sentences (GLL, VTG) to save UART bandwidth */
-    gps_send_nmea("PUBX,40,GLL,0,0,0,0");
-    gps_send_nmea("PUBX,40,VTG,0,0,0,0");
-
-    /* 2. Set Portable navigation mode (0) for better sensitivity near windows
-     * UBX-CFG-NAV5: class=0x06, id=0x24, len=36 */
-    uint8_t nav5[36] = {0};
-    nav5[0] = 0x01;  /* mask: apply dynModel */
-    nav5[1] = 0x00;
-    nav5[2] = 0x00;  /* dynModel = Portable */
-    nav5[3] = 0x03;  /* fixMode = auto 2D/3D */
-    gps_send_ubx(0x06, 0x24, nav5, sizeof(nav5));
-
-    /* 3. Enable SBAS for better accuracy
-     * UBX-CFG-SBAS: class=0x06, id=0x16, len=8 */
-    uint8_t sbas[8] = {0x01, 0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
-    gps_send_ubx(0x06, 0x16, sbas, sizeof(sbas));
-
-    /* 4. Save config to BBR + Flash so it persists across reboots
-     * UBX-CFG-CFG: saveMask=0xFFFF, deviceMask=0x17 */
-    uint8_t cfg_save[13] = {0};
-    cfg_save[4] = 0xFF; /* saveMask LSB */
-    cfg_save[5] = 0xFF; /* saveMask MSB */
-    cfg_save[12] = 0x17; /* deviceMask: BBR|Flash|SPI */
-    gps_send_ubx(0x06, 0x09, cfg_save, sizeof(cfg_save));
-
-    NRF_LOG_INFO("GPS: configured (portable, SBAS) & saved to flash");
 }
 
 
@@ -333,51 +248,10 @@ void gps_uart_configure(void)
     }
 
     /*
-     * STEP 0: Factory-reset all saved GPS module settings.
-     * UBX-CFG-CFG: Class=0x06, ID=0x09, Length=13 bytes
-     *
-     * clearMask = 0x0000FFFF (clear ALL saved config sections)
-     * saveMask  = 0x00000000 (don't save yet)
-     * loadMask  = 0x0000FFFF (reload defaults from ROM)
-     * deviceMask = 0x17      (BBR + Flash + EEPROM)
-     *
-     * This wipes any Power Save Mode, PM2, or other stale settings
-     * that were previously saved to the NEO-6M's internal flash.
-     */
-    uint8_t cfg_reset[13] = {0};
-
-    /* clearMask: bytes 0-3 = 0xFFFF (clear everything) */
-    cfg_reset[0] = 0xFF;
-    cfg_reset[1] = 0xFF;
-    cfg_reset[2] = 0x00;
-    cfg_reset[3] = 0x00;
-
-    /* saveMask: bytes 4-7 = 0 (don't save) */
-
-    /* loadMask: bytes 8-11 = 0xFFFF (reload ROM defaults) */
-    cfg_reset[8]  = 0xFF;
-    cfg_reset[9]  = 0xFF;
-    cfg_reset[10] = 0x00;
-    cfg_reset[11] = 0x00;
-
-    /* deviceMask: byte 12 = BBR | Flash | EEPROM */
-    cfg_reset[12] = 0x17;
-
-    send_ubx_message(0x06, 0x09, cfg_reset, sizeof(cfg_reset));
-
-    NRF_LOG_INFO("GPS: factory reset sent (clearing old PSM config)");
-
-    /* Give the module time to process the reset */
-    nrf_delay_ms(200);
-
-    /*
      * STEP 1: Explicitly disable Power Save Mode.
      * UBX-CFG-RXM: Class=0x06, ID=0x11, Length=2 bytes
      *
      * lpMode = 0 → Continuous mode (no sleeping, full acquisition power)
-     *
-     * This overrides any remnant PSM config that may have survived
-     * in the module's volatile memory after the factory reset.
      */
     uint8_t cfg_rxm[2] = {0};
     cfg_rxm[0] = 0x00;  /* reserved */
