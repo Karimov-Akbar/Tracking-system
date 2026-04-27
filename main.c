@@ -386,6 +386,11 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             APP_ERROR_CHECK(err_code);
             break;
 
+        case BLE_ADV_EVT_IDLE:
+            NRF_LOG_INFO("Advertising timeout — restarting.");
+            advertising_start();
+            break;
+
         default:
             break;
     }
