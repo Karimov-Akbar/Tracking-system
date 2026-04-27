@@ -405,7 +405,8 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
     {
         case BLE_GAP_EVT_DISCONNECTED:
             NRF_LOG_INFO("Disconnected.");
-            // LED indication will be changed when advertising starts.
+            m_conn_handle = BLE_CONN_HANDLE_INVALID;
+            advertising_start();
             break;
 
         case BLE_GAP_EVT_CONNECTED:
@@ -528,7 +529,7 @@ static void advertising_init(void)
     init.advdata.name_type               = BLE_ADVDATA_NO_NAME;
     init.advdata.include_appearance      = true;
     init.advdata.flags                   = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
-    init.advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids);
+    init.advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
     init.advdata.uuids_complete.p_uuids  = m_adv_uuids;
 
     init.srdata.name_type                = BLE_ADVDATA_FULL_NAME;
@@ -589,11 +590,11 @@ static void power_management_init(void)
  */
 static void idle_state_handle(void)
 {
+    LOG_BACKEND_USB_PROCESS();
     if (NRF_LOG_PROCESS() == false)
     {
         nrf_pwr_mgmt_run();
     }
-	LOG_BACKEND_USB_PROCESS();
 }
 
 
