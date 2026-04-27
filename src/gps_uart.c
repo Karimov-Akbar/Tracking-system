@@ -186,9 +186,10 @@ void gps_uart_get_diagnostics(uint32_t *p_bytes, uint32_t *p_lines)
 static void send_ubx_byte(uint8_t byte)
 {
     uint32_t err;
+    uint32_t retries = 0;
     do {
         err = app_uart_put(byte);
-    } while (err == NRF_ERROR_NO_MEM);  /* Retry if TX FIFO full */
+    } while (err == NRF_ERROR_NO_MEM && ++retries < 10000);
 }
 
 
@@ -273,7 +274,9 @@ void gps_uart_configure(void)
      */
     uint8_t cfg_nav5[36] = {0};
 
-    /* mask: bits 0 (dynModel) + 2 (fixMode) = 0x0005 */
+    /* mask: bits 0 (dynModel) + 2 (fixMode) = 0x0005
+     * Only these two fields will be applied by the module.
+     * All other bytes are left at 0 (ignored by mask). */
     cfg_nav5[0] = 0x05;
     cfg_nav5[1] = 0x00;
 
@@ -283,37 +286,9 @@ void gps_uart_configure(void)
     /* fixMode: 3 = Auto 2D/3D */
     cfg_nav5[3] = 0x03;
 
-    /* fixedAlt (not used in auto mode) */
-    /* fixedAltVar (not used) */
-
-    /* minElev: 5 degrees — byte offset 10 */
-    cfg_nav5[10] = 0x05;
-
-    /* pDop: 250 (25.0) — bytes offset 12-13 */
-    cfg_nav5[12] = 0xFA;
-    cfg_nav5[13] = 0x00;
-
-    /* tDop: 250 (25.0) — bytes offset 14-15 */
-    cfg_nav5[14] = 0xFA;
-    cfg_nav5[15] = 0x00;
-
-    /* pAcc: 100m — bytes offset 16-17 */
-    cfg_nav5[16] = 0x64;
-    cfg_nav5[17] = 0x00;
-
-    /* tAcc: 350m — bytes offset 18-19 */
-    cfg_nav5[18] = 0x5E;
-    cfg_nav5[19] = 0x01;
-
-    /* staticHoldThresh: 0 (disabled) — byte offset 20 */
-    cfg_nav5[20] = 0x00;
-
-    /* dgnssTimeout: 60s — byte offset 21 */
-    cfg_nav5[21] = 0x3C;
-
     send_ubx_message(0x06, 0x24, cfg_nav5, sizeof(cfg_nav5));
 
-    NRF_LOG_INFO("GPS configured: Pedestrian mode, Auto 2D/3D, minElev=5");
+    NRF_LOG_INFO("GPS configured: Pedestrian mode, Auto 2D/3D");
 
     /*
      * STEP 3: Save all current settings to BBR + EEPROM.
