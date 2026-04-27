@@ -560,7 +560,7 @@ function updateTrackedNearbyPositions() {
                 deviceName: d.name,
                 lat: baseLat || 0,
                 lon: baseLon || 0,
-                sat: 0, spd: 0, fix: 1,
+                sat: 0, spd: 0, fix: 1, /* intentional: device is "found" via BLE */
                 mode: 'indoor',
                 isNearby: true,
                 dist: Math.round(distNum)
