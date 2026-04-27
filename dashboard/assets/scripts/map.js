@@ -105,3 +105,9 @@ function toggleHeatmap() {
         if (btn) btn.classList.add('active');
     }
 }
+
+window.addEventListener('resize', () => {
+    if (mapOk && map) {
+        setTimeout(() => map.invalidateSize(), 100);
+    }
+});

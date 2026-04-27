@@ -57,7 +57,7 @@
 
 @media (max-width: 768px) {
     body {
-        overflow: auto;
+        overflow: hidden;
     }
 
     .burger {
@@ -66,8 +66,8 @@
 
     .app {
         flex-direction: column;
-        height: auto;
-        min-height: 100vh;
+        height: 100dvh;
+        min-height: 100dvh;
     }
 
     .panel {
@@ -76,7 +76,7 @@
         left: 0;
         width: 320px;
         min-width: 320px;
-        height: 100vh;
+        height: 100dvh;
         z-index: 2000;
         transform: translateX(-100%);
         transition: transform .3s cubic-bezier(.4, 0, .2, 1);
@@ -89,7 +89,8 @@
 
     .map-wrap {
         width: 100%;
-        height: 100vh;
+        height: 100dvh;
+        flex: 1;
     }
 
     .panel-head {

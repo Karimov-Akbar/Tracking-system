@@ -18,11 +18,15 @@ function onLocFor(deviceId) {
         const loc = parseLoc(e.target.value);
         if (!loc) return;
         d.alt = loc.alt;
-        updateDevicePosition(deviceId, loc.lat, loc.lon);
-        if (loc.lat !== 0 || loc.lon !== 0) {
-            const loader = document.getElementById('gpsLoader');
-            if (loader) loader.style.display = 'none';
+        
+        if (loc.lat === 0 && loc.lon === 0) {
+            return;
         }
+        
+        updateDevicePosition(deviceId, loc.lat, loc.lon);
+        const loader = document.getElementById('gpsLoader');
+        if (loader) loader.style.display = 'none';
+        
         renderDeviceList();
     };
 }
