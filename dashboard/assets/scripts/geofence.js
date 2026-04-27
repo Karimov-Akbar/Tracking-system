@@ -175,13 +175,15 @@ function checkGeofences(deviceId, lat, lon) {
         else isIn = distM(lat, lon, zone.lat, zone.lon) <= zone.radius;
 
         if (!isInsideZone[zone.id]) isInsideZone[zone.id] = {};
-        const wasIn = isInsideZone[zone.id][deviceId] !== false;
+        const prev = isInsideZone[zone.id][deviceId];
+        const wasIn = prev === true;
+        const wasOut = prev === false;
 
         if (wasIn && !isIn) {
             log(`⚠️ ${dev.name} ВЫШЕЛ из зоны "${zone.name}"!`, 'err');
             const dist = typeof currentMode !== 'undefined' && currentMode === 'indoor' ? Math.round(distM(lat, lon, zone.lat, zone.lon)) : null;
             sendToServer('/api/geofence', { event: 'exit', deviceName: dev.name, zoneName: zone.name, lat, lon, mode: typeof currentMode !== 'undefined' ? currentMode : 'outdoor', dist, radius: zone.radius });
-        } else if (!wasIn && isIn) {
+        } else if (wasOut && isIn) {
             log(`✅ ${dev.name} вернулся в зону "${zone.name}"`, 'ok');
             const dist = typeof currentMode !== 'undefined' && currentMode === 'indoor' ? Math.round(distM(lat, lon, zone.lat, zone.lon)) : null;
             sendToServer('/api/geofence', { event: 'enter', deviceName: dev.name, zoneName: zone.name, lat, lon, mode: typeof currentMode !== 'undefined' ? currentMode : 'outdoor', dist, radius: zone.radius });
