@@ -36,15 +36,8 @@
  * filter */
 #define JUMP_THRESHOLD 0.005f /* ~550 meters */
 
-/** @brief Internal GPS data storage */
 static nmea_gps_data_t m_gps_data;
 static bool m_data_valid = false;
-
-/** @brief EMA filter state */
-static float m_ema_lat = 0.0f;
-static float m_ema_lon = 0.0f;
-static float m_ema_alt = 0.0f;
-static bool m_ema_initialized = false;
 
 /**
  * @brief Apply EMA filter to stabilize coordinates.
@@ -230,13 +223,16 @@ static bool nmea_parse_gprmc(char **pp_fields, int field_count) {
     char lon_dir = (pp_fields[6][0] != '\0') ? pp_fields[6][0] : 'E';
     float raw_lon = nmea_coord_to_decimal(pp_fields[5], lon_dir);
 
-    /* Apply EMA stabilization filter */
+    /* Apply coordinates */
     apply_raw_data(raw_lat, raw_lon, m_gps_data.altitude);
 
     /* Field 7: Speed in knots */
     if (pp_fields[7][0] != '\0') {
       m_gps_data.speed_knots = (float)atof(pp_fields[7]);
     }
+  } else {
+    /* No fix — reset speed so dashboard doesn't show stale movement */
+    m_gps_data.speed_knots = 0.0f;
   }
 
   /* Field 9: Date (DDMMYY) */
@@ -315,11 +311,7 @@ static bool nmea_parse_gpgga(char **pp_fields, int field_count) {
 void nmea_parser_init(void) {
   memset(&m_gps_data, 0, sizeof(m_gps_data));
   m_data_valid = false;
-  m_ema_initialized = false;
-  m_ema_lat = 0.0f;
-  m_ema_lon = 0.0f;
-  m_ema_alt = 0.0f;
-  NRF_LOG_INFO("NMEA parser initialized (EMA filter enabled)");
+  NRF_LOG_INFO("NMEA parser initialized");
 }
 
 bool nmea_parse_line(const char *p_sentence) {
