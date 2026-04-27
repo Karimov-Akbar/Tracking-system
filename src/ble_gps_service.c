@@ -265,6 +265,8 @@ void ble_gps_service_on_ble_evt(ble_evt_t const *p_ble_evt, void *p_context)
         case BLE_GAP_EVT_DISCONNECTED:
             p_gps_service->conn_handle             = BLE_CONN_HANDLE_INVALID;
             p_gps_service->location_notify_enabled = false;
+            p_gps_service->sos_notify_enabled      = false;
+            p_gps_service->scan_notify_enabled     = false;
             break;
 
         case BLE_GATTS_EVT_WRITE:
