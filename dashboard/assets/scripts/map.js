@@ -78,7 +78,7 @@ function updateDevicePosition(deviceId, lat, lon) {
         lon,
         sat: d.lastSat,
         spd: d.lastSpeed,
-        fix: 1,
+        fix: d.fix ? 1 : 0,
         mode: currentMode,
         isNearby: d.isNearby ? true : false,
         dist: d.isNearby ? estimateDistance(d.nearbyRssi) : 0
