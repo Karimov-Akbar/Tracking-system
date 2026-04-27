@@ -217,7 +217,7 @@ static bool nmea_parse_gprmc(char **pp_fields, int field_count) {
   bool rmc_valid = (pp_fields[2][0] == 'A');
   if (rmc_valid) {
     m_gps_data.fix_valid = true;
-  } else if (m_gps_data.fix_quality == 0) {
+  } else {
     m_gps_data.fix_valid = false;
   }
 
