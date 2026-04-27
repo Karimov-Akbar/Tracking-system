@@ -189,7 +189,8 @@ static void send_ubx_byte(uint8_t byte)
     uint32_t retries = 0;
     do {
         err = app_uart_put(byte);
-    } while (err == NRF_ERROR_NO_MEM && ++retries < 10000);
+    } while (err == NRF_ERROR_NO_MEM && ++retries < 50000);
+    /* 50000 × ~93ns = ~4.6ms > 1.04ms per byte @ 9600 baud */
 }
 
 
